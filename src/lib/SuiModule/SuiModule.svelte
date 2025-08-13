@@ -710,10 +710,10 @@
 					try {
 						_discoveryAttempt += 1;
 						const ts = new Date().toISOString();
-						console.log(
-							`[SuiModule] [${ts}] [attempt:${_discoveryAttempt}] Registry register:`,
-							wallet?.name || 'unknown'
-						);
+						// console.log(
+						// 	`[SuiModule] [${ts}] [attempt:${_discoveryAttempt}] Registry register:`,
+						// 	wallet?.name || 'unknown'
+						// );
 					} catch {}
 					refreshDiscoverySnapshot(_discoveryAttempt);
 				});
