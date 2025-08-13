@@ -149,6 +149,19 @@
 <SuiModule {onConnect} autoConnect={true} autoSuiNS={true} autoSuiBalance={true}>
 	<div class="container">
 		<header>
+			<a
+				class="github-link"
+				href="https://github.com/teededung/sui-svelte-wallet-kit"
+				target="_blank"
+				rel="noopener noreferrer"
+				aria-label="Open GitHub repository"
+			>
+				<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="currentColor">
+					<path
+						d="M12 2C6.477 2 2 6.486 2 12.021c0 4.424 2.865 8.176 6.839 9.504.5.093.682-.217.682-.483 0-.238-.009-.868-.013-1.704-2.782.606-3.369-1.343-3.369-1.343-.455-1.159-1.11-1.468-1.11-1.468-.908-.62.069-.607.069-.607 1.004.071 1.532 1.032 1.532 1.032.893 1.53 2.344 1.087 2.914.832.091-.649.35-1.087.636-1.337-2.222-.253-4.555-1.114-4.555-4.957 0-1.095.39-1.99 1.029-2.692-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.028A9.564 9.564 0 0 1 12 6.844c.852.004 1.709.115 2.51.338 1.91-1.298 2.748-1.028 2.748-1.028.546 1.378.203 2.397.1 2.65.64.702 1.028 1.597 1.028 2.692 0 3.853-2.337 4.701-4.566 4.949.36.311.68.923.68 1.86 0 1.343-.012 2.426-.012 2.758 0 .269.18.58.688.481A10.02 10.02 0 0 0 22 12.021C22 6.486 17.523 2 12 2Z"
+					/>
+				</svg>
+			</a>
 			<h1>Sui Svelte Wallet Kit</h1>
 			<p>Connect Sui wallets, manage accounts, sign transactions</p>
 		</header>
@@ -557,6 +570,55 @@
 		background: #475569;
 		border-color: rgba(148, 163, 184, 0.25);
 		cursor: not-allowed;
+	}
+
+	/* GitHub link button */
+	header {
+		position: relative;
+	}
+
+	.github-link {
+		position: absolute;
+		top: 0.25rem;
+		right: 0.25rem;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		border-radius: 8px;
+		color: #e5e7eb;
+		background: rgba(255, 255, 255, 0.08);
+		border: 1px solid rgba(255, 255, 255, 0.18);
+		backdrop-filter: blur(4px);
+		text-decoration: none;
+		transition:
+			transform 0.15s ease,
+			box-shadow 0.2s ease,
+			background 0.2s ease;
+		box-shadow: 0 6px 16px rgba(2, 6, 23, 0.45);
+	}
+
+	.github-link:hover {
+		transform: translateY(-1px);
+		background: rgba(255, 255, 255, 0.12);
+		box-shadow: 0 10px 22px rgba(2, 6, 23, 0.55);
+	}
+
+	/* Responsive tweaks for mobile */
+	@media (max-width: 640px) {
+		.github-link {
+			position: fixed;
+			top: calc(env(safe-area-inset-top, 0px) + 10px);
+			right: calc(env(safe-area-inset-right, 0px) + 10px);
+			width: 40px;
+			height: 40px;
+			z-index: 50;
+		}
+
+		header {
+			padding-top: 0.75rem;
+		}
 	}
 
 	.detected-wallets {
