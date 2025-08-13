@@ -755,15 +755,17 @@
 		};
 	});
 
-	$effect(() => {
+	$effect.pre(() => {
 		// Start discovery after mount; idempotent
 		initWalletDiscovery();
 	});
 
 	$effect(() => {
-		if (_autoConnect) {
-			autoConnectWallet();
-		}
+		if (!_autoConnect) return;
+		if (account.value) return;
+		if (!Array.isArray(_availableWalletsState) || _availableWalletsState.length === 0) return;
+		if (status === ConnectionStatus.CONNECTING) return;
+		autoConnectWallet();
 	});
 
 	// Refresh SuiNS names when chains or address change
