@@ -27,5 +27,6 @@ export {
 	refreshSuiBalance,
 	setAccountLabel,
 	walletAdapters,
-	availableWallets
+	availableWallets,
+	setSuiBalanceCacheTTL
 } from './SuiModule/index.js';

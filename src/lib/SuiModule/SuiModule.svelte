@@ -26,6 +26,9 @@
 	let _autoFetchSuiNS = $state(true);
 	let _autoFetchBalance = $state(true);
 	let _lastBalanceKey = $state('');
+	let _balanceFetchedAtByKey = $state({}); // key: owner|chain -> timestamp
+	let _balanceCacheTTLms = $state(2000); // default cache TTL for balance
+	const _balanceInflightByKey = {}; // key -> Promise
 	let _accountsSnapshot = $state([]);
 	let connectModal = $state();
 	export let getConnectModal = () => connectModal;
@@ -204,28 +207,52 @@
 	};
 
 	// Fetch SUI coin balance for provided address (default: active account)
-	// options.force = true to bypass duplicate-key guard
+	// options.force = true to bypass TTL; options.ttlMs to override default TTL for this call
 	export const refreshSuiBalance = async (targetAddress, options = {}) => {
 		const owner = targetAddress ?? account.value?.address;
 		if (!owner) return null;
 		const chainId = account.value?.chains?.[0] || 'sui:mainnet';
 		const key = `${owner}|${chainId}`;
-		if (!options.force && key === _lastBalanceKey) {
+		const now = Date.now();
+		const lastFetchedAt = _balanceFetchedAtByKey[key] || 0;
+		const ttl = typeof options.ttlMs === 'number' ? Math.max(0, options.ttlMs) : _balanceCacheTTLms;
+		const isFresh = now - lastFetchedAt < ttl;
+
+		// Return in-flight promise if there is one (dedupe concurrent calls)
+		if (_balanceInflightByKey[key]) {
+			return _balanceInflightByKey[key];
+		}
+
+		// Respect TTL unless force is requested
+		if (!options.force && isFresh) {
 			return _suiBalanceByAddress[owner] ?? null;
 		}
+
 		_lastBalanceKey = key;
 		_suiBalanceLoading = true;
-		try {
-			const client = getSuiClient(chainId);
-			const res = await client.getBalance({ owner, coinType: '0x2::sui::SUI' });
-			const total = res?.totalBalance ?? '0';
-			_suiBalanceByAddress = { ..._suiBalanceByAddress, [owner]: total };
-			return total;
-		} catch (_) {
-			return null;
-		} finally {
-			_suiBalanceLoading = false;
-		}
+		const fetchPromise = (async () => {
+			try {
+				const client = getSuiClient(chainId);
+				const res = await client.getBalance({ owner, coinType: '0x2::sui::SUI' });
+				const total = res?.totalBalance ?? '0';
+				_suiBalanceByAddress = { ..._suiBalanceByAddress, [owner]: total };
+				_balanceFetchedAtByKey = { ..._balanceFetchedAtByKey, [key]: Date.now() };
+				return total;
+			} catch (_) {
+				return null;
+			} finally {
+				delete _balanceInflightByKey[key];
+				_suiBalanceLoading = false;
+			}
+		})();
+
+		_balanceInflightByKey[key] = fetchPromise;
+		return fetchPromise;
+	};
+
+	export const setSuiBalanceCacheTTL = (ms) => {
+		const next = Number.isFinite(ms) ? Math.max(0, ms) : _balanceCacheTTLms;
+		_balanceCacheTTLms = next;
 	};
 
 	// Fetch SuiNS names for all accounts (use on connect/import)
@@ -492,6 +519,10 @@
 		_suiBalanceLoading = false;
 		_lastRefreshKey = '';
 		_lastBalanceKey = '';
+		_balanceFetchedAtByKey = {};
+		try {
+			for (const k of Object.keys(_balanceInflightByKey)) delete _balanceInflightByKey[k];
+		} catch {}
 		_accountsSnapshot = [];
 		_suiNSPrefetched = false;
 		_suiNSInternalUpdate = false;

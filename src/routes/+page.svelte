@@ -51,7 +51,6 @@
 
 	const onAccountChange = async () => {
 		switchAccount(Number(selectedAccountIndex));
-		//await refreshSuiBalance();
 	};
 
 	// Whitelist wallets that support native account picker when re-selecting the same wallet
@@ -252,7 +251,7 @@
 					</p>
 					<button
 						class="action-btn"
-						onclick={() => refreshSuiBalance(account.value.address, { force: true })}
+						onclick={() => refreshSuiBalance(account.value.address)}
 						disabled={!account.value || suiBalanceLoading.value}
 					>
 						Refresh Balance
