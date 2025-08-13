@@ -1,6 +1,6 @@
 {
 	"name": "sui-svelte-wallet-kit",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "Svelte 5 wallet kit for Sui: connect wallets, manage accounts, SuiNS, balance, sign transactions/messages",
 	"author": "Tuan Anh <start@hotmail.com.vn>",
 	"license": "MIT",
