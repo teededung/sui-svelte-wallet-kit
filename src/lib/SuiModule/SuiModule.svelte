@@ -549,25 +549,34 @@
 		);
 	};
 
-	const getAvailableWallets = (defaultWallets) => {
-		const walletAdapters = detectWalletAdapters();
+	const normalizeWalletName = (name) =>
+		(name || '')
+			.toLowerCase()
+			.replace(/wallet$/g, '')
+			.replace(/[^a-z0-9]/g, '');
 
-		const availableWallets = defaultWallets
+	const getAvailableWallets = (defaultWallets, detectedAdapters) => {
+		const adapters = Array.isArray(detectedAdapters) ? detectedAdapters : detectWalletAdapters();
+
+		const list = defaultWallets
 			.map((item) => {
-				const foundAdapter = walletAdapters.find((walletAdapter) => {
-					// Check exact name match or common aliases
-					return item.name.includes(walletAdapter.name);
+				const normalizedItem = normalizeWalletName(item.name);
+				const foundAdapter = adapters.find((walletAdapter) => {
+					const normalizedAdapter = normalizeWalletName(walletAdapter.name);
+					return (
+						normalizedItem.includes(normalizedAdapter) || normalizedAdapter.includes(normalizedItem)
+					);
 				});
 
 				return {
 					...item,
 					adapter: foundAdapter ? foundAdapter : undefined,
-					installed: foundAdapter ? true : false
+					installed: !!foundAdapter
 				};
 			})
-			.filter((item) => item.installed == true);
+			.filter((item) => item.installed === true);
 
-		return availableWallets;
+		return list;
 	};
 
 	const detectWalletAdapters = () => {
@@ -575,7 +584,7 @@
 		const walletRadar = new WalletRadar();
 		walletRadar.activate();
 
-		// Give a small delay for wallets to register
+		// Read the current snapshot of detected adapters
 		const walletAdapters = walletRadar.getDetectedWalletAdapters();
 
 		walletRadar.deactivate();
@@ -589,8 +598,128 @@
 		}
 	};
 
-	export const walletAdapters = isBrowser ? detectWalletAdapters() : [];
-	export const availableWallets = isBrowser ? getAvailableWallets(AllDefaultWallets) : [];
+	export const walletAdapters = [];
+	export const availableWallets = [];
+
+	let _walletsRegistryOff = undefined;
+	let _discoveryInitialized = false;
+	const _discoverySubscribers = new Set();
+	let _lastDiscoveryLogKey = '';
+	let _lastAvailableLogKey = '';
+	let _discoveryAttempt = 0;
+	const uniqueAdaptersByName = (adapters) => {
+		const map = new Map();
+		for (const a of adapters || []) {
+			if (!a || !a.name) continue;
+			if (!map.has(a.name)) map.set(a.name, a);
+		}
+		return Array.from(map.values());
+	};
+
+	export const setModuleWalletDiscovery = (adapters, wallets) => {
+		const nextAdapters = Array.isArray(adapters) ? adapters : [];
+		const nextWallets = Array.isArray(wallets) ? wallets : [];
+		// In-place mutation to preserve module live bindings and avoid reassignment
+		walletAdapters.length = 0;
+		walletAdapters.push(...nextAdapters);
+		availableWallets.length = 0;
+		availableWallets.push(...nextWallets);
+		try {
+			for (const cb of _discoverySubscribers) {
+				try {
+					cb(walletAdapters, availableWallets);
+				} catch {}
+			}
+		} catch {}
+	};
+
+	export const subscribeWalletDiscovery = (callback) => {
+		if (typeof callback !== 'function') return () => {};
+		_discoverySubscribers.add(callback);
+		// Emit current snapshot immediately
+		try {
+			callback(walletAdapters, availableWallets);
+		} catch {}
+		return () => {
+			_discoverySubscribers.delete(callback);
+		};
+	};
+
+	const refreshDiscoverySnapshot = (attemptLabel) => {
+		const snapshot = uniqueAdaptersByName(detectWalletAdapters());
+		try {
+			const adapterNames = snapshot
+				.map((a) => a?.name)
+				.filter(Boolean)
+				.sort();
+			const key = adapterNames.join('|');
+			if (key !== _lastDiscoveryLogKey) {
+				_lastDiscoveryLogKey = key;
+				const ts = new Date().toISOString();
+				// console.log(
+				// 	`[SuiModule] [${ts}] [attempt:${attemptLabel ?? '-'}] Detected adapters:`,
+				// 	adapterNames
+				// );
+			}
+		} catch {}
+		const wallets = getAvailableWallets(AllDefaultWallets, snapshot);
+		try {
+			const walletNames = wallets
+				.map((w) => w?.name)
+				.filter(Boolean)
+				.sort();
+			const wkey = walletNames.join('|');
+			if (wkey !== _lastAvailableLogKey) {
+				_lastAvailableLogKey = wkey;
+				const ts = new Date().toISOString();
+				// console.log(
+				// 	`[SuiModule] [${ts}] [attempt:${attemptLabel ?? '-'}] Available wallets:`,
+				// 	walletNames
+				// );
+			}
+		} catch {}
+		setModuleWalletDiscovery(snapshot, wallets);
+	};
+
+	export const initWalletDiscovery = () => {
+		if (!isBrowser) return;
+		if (_discoveryInitialized) return;
+		_discoveryInitialized = true;
+		// Remove previous listener if any
+		try {
+			if (typeof _walletsRegistryOff === 'function') {
+				_walletsRegistryOff();
+				_walletsRegistryOff = undefined;
+			}
+		} catch {}
+
+		// Run multiple times shortly after mount to catch late-registered wallets
+		const delays = [0, 50, 200, 600, 1200];
+		for (const d of delays) {
+			setTimeout(() => {
+				_discoveryAttempt += 1;
+				refreshDiscoverySnapshot(_discoveryAttempt);
+			}, d);
+		}
+
+		// Also listen to Wallet Standard registry events if available
+		try {
+			const registry = getWallets?.();
+			if (registry && typeof registry.on === 'function') {
+				_walletsRegistryOff = registry.on('register', (wallet) => {
+					try {
+						_discoveryAttempt += 1;
+						const ts = new Date().toISOString();
+						console.log(
+							`[SuiModule] [${ts}] [attempt:${_discoveryAttempt}] Registry register:`,
+							wallet?.name || 'unknown'
+						);
+					} catch {}
+					refreshDiscoverySnapshot(_discoveryAttempt);
+				});
+			}
+		} catch {}
+	};
 </script>
 
 <script>
@@ -607,6 +736,29 @@
 	_autoConnect = autoConnect;
 	_autoFetchSuiNS = !!autoSuiNS;
 	_autoFetchBalance = !!autoSuiBalance;
+
+	// Mirror discovery to instance state for reactive UI updates
+	let _discoveredAdapters = $state([]);
+	let _availableWalletsState = $state([]);
+
+	$effect(() => {
+		// Start discovery after mount; subscribe for updates
+		const off = subscribeWalletDiscovery((adapters, wallets) => {
+			_discoveredAdapters = Array.isArray(adapters) ? adapters.slice() : [];
+			_availableWalletsState = Array.isArray(wallets) ? wallets.slice() : [];
+		});
+		initWalletDiscovery();
+		return () => {
+			try {
+				off?.();
+			} catch {}
+		};
+	});
+
+	$effect(() => {
+		// Start discovery after mount; idempotent
+		initWalletDiscovery();
+	});
 
 	$effect(() => {
 		if (_autoConnect) {
@@ -642,6 +794,6 @@
 	});
 </script>
 
-<ConnectModal bind:this={connectModal} {availableWallets} />
+<ConnectModal bind:this={connectModal} availableWallets={_availableWalletsState} />
 
 {@render children()}
