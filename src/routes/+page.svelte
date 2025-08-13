@@ -149,8 +149,8 @@
 <SuiModule {onConnect} autoConnect={true} autoSuiNS={true} autoSuiBalance={true}>
 	<div class="container">
 		<header>
-			<h1>Sui Svelte Library Test</h1>
-			<p>Test the wallet connection and transaction signing functionality</p>
+			<h1>Sui Svelte Wallet Kit</h1>
+			<p>Connect Sui wallets, manage accounts, sign transactions</p>
 		</header>
 
 		<div class="wallet-section">
