@@ -17,6 +17,41 @@
 	let isOpen = $state(false);
 	let showOther = $state(false);
 
+	// Show install hint when clicking a wallet that is not installed
+	let notInstalledSelection = $state();
+	let installHintEl = $state();
+
+	const getInstallUrlForWallet = (wallet) => {
+		console.log('getInstallUrlForWallet', wallet);
+		try {
+			const urls = wallet?.downloadUrl;
+			if (urls) {
+				if (typeof urls === 'string') return urls;
+				if (typeof urls === 'object') {
+					if (typeof urls.chrome === 'string') return urls.chrome;
+					const first = Object.values(urls).find(
+						(u) => typeof u === 'string' && /^https?:\/\//.test(u)
+					);
+					if (first) return first;
+				}
+			}
+			const candidates = [
+				wallet?.installUrl,
+				wallet?.downloadUrl,
+				wallet?.website,
+				wallet?.homepage,
+				wallet?.homeUrl,
+				wallet?.url
+			];
+			for (const u of candidates) {
+				if (typeof u === 'string' && /^https?:\/\//.test(u)) return u;
+			}
+			return `https://chromewebstore.google.com/search/${encodeURIComponent(wallet?.name || 'Sui wallet')}`;
+		} catch (_) {
+			return 'https://chromewebstore.google.com/search/sui%20wallet';
+		}
+	};
+
 	const sortByName = (a, b) => (a?.name || '').localeCompare(b?.name || '');
 
 	const detectedWallets = $derived(
@@ -62,16 +97,31 @@
 			resolve.value(undefined);
 		}
 		connectModal?.close();
+		notInstalledSelection = undefined;
 	};
 
 	const onSelected = (wallet) => {
-		// Resolve with a structured payload so callers can detect installation state
-		if (resolve.value) {
-			resolve.value({ wallet, installed: !!wallet?.installed });
-		}
 		// Keep modal open for not installed to allow user to pick another wallet
 		if (wallet?.installed) {
+			notInstalledSelection = undefined;
+			if (resolve.value) {
+				resolve.value({ wallet, installed: true });
+			}
 			connectModal?.close();
+			return;
+		}
+
+		notInstalledSelection = {
+			wallet,
+			installUrl: getInstallUrlForWallet(wallet)
+		};
+		setTimeout(() => {
+			try {
+				installHintEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+			} catch {}
+		}, 0);
+		if (resolve.value) {
+			resolve.value({ wallet, installed: false });
 		}
 	};
 
@@ -114,6 +164,23 @@
 				</button>
 			</div>
 
+			{#if notInstalledSelection}
+				<div class="install-hint" role="alert" bind:this={installHintEl}>
+					<div class="install-hint-row">
+						<strong>{notInstalledSelection.wallet?.name}</strong>
+						<span>is not installed.</span>
+					</div>
+					<a
+						href={notInstalledSelection.installUrl}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="install-link"
+					>
+						Install this wallet
+					</a>
+				</div>
+			{/if}
+
 			{#if detectedWallets.length === 0 && otherWallets.length === 0}
 				<div class="no-wallets">
 					<div class="no-wallets-message">No wallets detected</div>
@@ -138,7 +205,6 @@
 									<img src={wallet.iconUrl} alt={wallet.name} class="wallet-icon" />
 									<div class="wallet-info">
 										<div class="wallet-name">{wallet.name}</div>
-										<div class="wallet-secondary"><span class="wallet-badge">detected</span></div>
 									</div>
 									<svg class="wallet-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path
@@ -318,7 +384,7 @@
 		display: flex;
 		align-items: center;
 		gap: 1rem;
-		padding: 1rem;
+		padding: 0.5rem 1rem;
 		border-radius: 0.5rem;
 		border: 1px solid #e5e7eb;
 		background: white;
@@ -332,8 +398,8 @@
 	}
 
 	.wallet-icon {
-		width: 2.5rem;
-		height: 2.5rem;
+		width: 2rem;
+		height: 2rem;
 		border-radius: 0.5rem;
 		flex-shrink: 0;
 	}
@@ -347,23 +413,6 @@
 		font-weight: 600;
 		color: #111827;
 		transition: color 0.2s ease;
-	}
-
-	.wallet-secondary {
-		font-size: 0.875rem;
-		color: #6b7280;
-		margin-top: 0.125rem;
-	}
-
-	.wallet-badge {
-		font-size: 0.675rem;
-		font-weight: 600;
-		color: #065f46;
-		background-color: #d1fae5;
-		border: 1px solid #10b98133;
-		padding: 0.125rem 0.375rem;
-		border-radius: 9999px;
-		text-transform: lowercase;
 	}
 
 	.section {
@@ -409,5 +458,31 @@
 
 	.wallet-button:hover .wallet-arrow {
 		color: #2563eb;
+	}
+
+	.install-hint {
+		border: 1px solid #fecaca;
+		background: #fef2f2;
+		color: #991b1b;
+		border-radius: 0.5rem;
+		padding: 0.75rem 0.875rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.install-hint-row {
+		display: flex;
+		gap: 0.375rem;
+		align-items: baseline;
+		margin-bottom: 0.375rem;
+	}
+
+	.install-link {
+		color: #b91c1c;
+		font-weight: 600;
+		text-decoration: underline;
+	}
+
+	.install-link:hover {
+		color: #7f1d1d;
 	}
 </style>
