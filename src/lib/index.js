@@ -11,6 +11,7 @@ export {
 	wallet,
 	walletName,
 	walletIconUrl,
+	lastWalletSelection,
 	connectWithModal,
 	getConnectModal,
 	connect,

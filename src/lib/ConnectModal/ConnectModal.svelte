@@ -15,6 +15,21 @@
 <script>
 	let { availableWallets } = $props();
 	let isOpen = $state(false);
+	let showOther = $state(false);
+
+	const sortByName = (a, b) => (a?.name || '').localeCompare(b?.name || '');
+
+	const detectedWallets = $derived(
+		Array.isArray(availableWallets)
+			? availableWallets.filter((w) => w?.installed).sort(sortByName)
+			: []
+	);
+
+	const otherWallets = $derived(
+		Array.isArray(availableWallets)
+			? availableWallets.filter((w) => !w?.installed).sort(sortByName)
+			: []
+	);
 
 	$effect(() => {
 		if (!connectModal) return;
@@ -50,10 +65,14 @@
 	};
 
 	const onSelected = (wallet) => {
+		// Resolve with a structured payload so callers can detect installation state
 		if (resolve.value) {
-			resolve.value(wallet);
+			resolve.value({ wallet, installed: !!wallet?.installed });
 		}
-		connectModal?.close();
+		// Keep modal open for not installed to allow user to pick another wallet
+		if (wallet?.installed) {
+			connectModal?.close();
+		}
 	};
 
 	const onOverlayClick = (event) => {
@@ -95,7 +114,7 @@
 				</button>
 			</div>
 
-			{#if availableWallets.length == 0}
+			{#if detectedWallets.length === 0 && otherWallets.length === 0}
 				<div class="no-wallets">
 					<div class="no-wallets-message">No wallets detected</div>
 					<p class="no-wallets-text">
@@ -110,25 +129,59 @@
 					</p>
 				</div>
 			{:else}
-				<div class="wallet-list">
-					{#each availableWallets as wallet (wallet.name)}
-						<button class="wallet-button" onclick={() => onSelected(wallet)}>
-							<img src={wallet.iconUrl} alt={wallet.name} class="wallet-icon" />
-							<div class="wallet-info">
-								<div class="wallet-name">{wallet.name}</div>
-								<div class="wallet-description">Click to connect</div>
-							</div>
-							<svg class="wallet-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M9 5l7 7-7 7"
-								></path>
-							</svg>
+				{#if detectedWallets.length > 0}
+					<div class="section">
+						<div class="section-header">Detected wallets</div>
+						<div class="wallet-list">
+							{#each detectedWallets as wallet (wallet.name)}
+								<button class="wallet-button" onclick={() => onSelected(wallet)}>
+									<img src={wallet.iconUrl} alt={wallet.name} class="wallet-icon" />
+									<div class="wallet-info">
+										<div class="wallet-name">{wallet.name}</div>
+										<div class="wallet-secondary"><span class="wallet-badge">detected</span></div>
+									</div>
+									<svg class="wallet-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M9 5l7 7-7 7"
+										></path>
+									</svg>
+								</button>
+							{/each}
+						</div>
+					</div>
+				{/if}
+
+				{#if otherWallets.length > 0}
+					<div class="section">
+						<button class="toggle-other-btn" onclick={() => (showOther = !showOther)}>
+							{#if showOther}Hide other wallets{/if}
+							{#if !showOther}Show other wallets ({otherWallets.length}){/if}
 						</button>
-					{/each}
-				</div>
+						{#if showOther}
+							<div class="wallet-list">
+								{#each otherWallets as wallet (wallet.name)}
+									<button class="wallet-button" onclick={() => onSelected(wallet)}>
+										<img src={wallet.iconUrl} alt={wallet.name} class="wallet-icon" />
+										<div class="wallet-info">
+											<div class="wallet-name">{wallet.name}</div>
+										</div>
+										<svg class="wallet-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												stroke-width="2"
+												d="M9 5l7 7-7 7"
+											></path>
+										</svg>
+									</button>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{/if}
 			{/if}
 		</div>
 	</div>
@@ -170,6 +223,8 @@
 		padding: 1.5rem;
 		width: 100%;
 		max-width: 28rem;
+		max-height: min(85vh, 700px);
+		overflow-y: auto;
 		animation: fadeInZoom 0.2s ease-out;
 		z-index: 3;
 	}
@@ -253,8 +308,8 @@
 	}
 
 	.wallet-list {
-		display: flex;
-		flex-direction: column;
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 0.75rem;
 	}
 
@@ -294,13 +349,55 @@
 		transition: color 0.2s ease;
 	}
 
-	.wallet-button:hover .wallet-name {
-		color: #1e3a8a;
-	}
-
-	.wallet-description {
+	.wallet-secondary {
 		font-size: 0.875rem;
 		color: #6b7280;
+		margin-top: 0.125rem;
+	}
+
+	.wallet-badge {
+		font-size: 0.675rem;
+		font-weight: 600;
+		color: #065f46;
+		background-color: #d1fae5;
+		border: 1px solid #10b98133;
+		padding: 0.125rem 0.375rem;
+		border-radius: 9999px;
+		text-transform: lowercase;
+	}
+
+	.section {
+		display: block;
+		margin-bottom: 1rem;
+	}
+
+	.section-header {
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: #374151;
+		margin: 0 0 0.5rem 0;
+	}
+
+	.toggle-other-btn {
+		width: 100%;
+		background: #f9fafb;
+		border: 1px solid #e5e7eb;
+		border-radius: 0.5rem;
+		padding: 0.5rem 0.75rem;
+		cursor: pointer;
+		color: #374151;
+		font-weight: 600;
+		margin-bottom: 0.75rem;
+		transition: all 0.2s ease;
+	}
+
+	.toggle-other-btn:hover {
+		background: #f3f4f6;
+		border-color: #d1d5db;
+	}
+
+	.wallet-button:hover .wallet-name {
+		color: #1e3a8a;
 	}
 
 	.wallet-arrow {

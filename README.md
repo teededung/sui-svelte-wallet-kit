@@ -60,28 +60,65 @@ Props:
 
 - `class?: string`
 - `style?: string`
+- `onWalletSelection?: (payload: { wallet: any; installed: boolean; connected: boolean; alreadyConnected?: boolean }) => void`
 
-Behavior: toggles between Connect and Disconnect based on `account.value`.
+Behavior: toggles between Connect and Disconnect based on `account.value`. When not connected, clicking the button opens the modal and invokes `onWalletSelection` with a payload describing the user selection so you can show a toast if the selected wallet is not installed.
 
 #### ConnectModal
 
 Used internally by `SuiModule`. You can access it via `getConnectModal()` and call `openAndWaitForResponse()` to let users reselect wallets while connected.
 
+UI notes:
+
+- Two-column grid layout.
+- Installed wallets are labeled "detected" and shown first.
+- A toggle button "Show other wallets" reveals the rest. The modal has a built-in max-height and scroll for long lists.
+
 ```svelte
 <script>
-	import { getConnectModal, connect, disconnect, walletName } from 'sui-svelte-wallet-kit';
+	import { getConnectModal, connect, disconnect } from 'sui-svelte-wallet-kit';
 
+	// Re-select wallet while already connected
 	const switchWallet = async () => {
 		const modal = getConnectModal?.();
 		if (!modal) return;
-		const picked = await modal.openAndWaitForResponse();
-		if (!picked) return;
+		const result = await modal.openAndWaitForResponse();
+		if (!result) return;
+
+		const picked = result?.wallet ?? result; // backward compatible
+		const installed = typeof result === 'object' ? !!result?.installed : !!picked?.installed;
+
+		if (!installed) {
+			// Show your toast here
+			console.log('[Demo] Selected wallet not installed:', picked?.name);
+			return;
+		}
+
 		try {
 			disconnect();
 		} catch {}
 		await connect(picked);
 	};
 </script>
+```
+
+Detecting not-installed wallets from the Connect button:
+
+```svelte
+<script>
+	import { ConnectButton } from 'sui-svelte-wallet-kit';
+
+	const onWalletSelection = (payload) => {
+		const picked = payload?.wallet ?? payload;
+		const installed = typeof payload === 'object' ? !!payload?.installed : !!picked?.installed;
+		if (!installed) {
+			// Show your toast here
+			console.log('[Demo] Please install:', picked?.name);
+		}
+	};
+</script>
+
+<ConnectButton class="connect-btn" {onWalletSelection} />
 ```
 
 ### API Reference
@@ -91,7 +128,7 @@ Exports from `sui-svelte-wallet-kit`:
 - Components: `SuiModule`, `ConnectButton`, `ConnectModal`
 - Connection: `connectWithModal`, `getConnectModal`, `connect(wallet)`, `disconnect`
 - Signing: `signAndExecuteTransaction(transaction)`, `signMessage(message)`, `canSignMessage()`
-- Wallet info: `wallet`, `walletName`, `walletIconUrl`
+- Wallet info: `wallet`, `walletName`, `walletIconUrl`, `lastWalletSelection`
 - Accounts: `account`, `accounts`, `accountsCount`, `activeAccountIndex`, `switchAccount(selector)`, `setAccountLabel(name)`
 - SuiNS: `suiNames`, `suiNamesLoading`, `suiNamesByAddress`
 - Balance: `suiBalance`, `suiBalanceLoading`, `suiBalanceByAddress`, `refreshSuiBalance(address?, { force?: boolean })`
@@ -114,7 +151,13 @@ Examples:
 	} from 'sui-svelte-wallet-kit';
 	import { Transaction } from '@mysten/sui/transactions';
 
-	const connectNow = () => connectWithModal();
+	// Returns { wallet, installed, connected, alreadyConnected? }
+	const connectNow = async () => {
+		const res = await connectWithModal();
+		if (res && res.installed === false) {
+			console.log('[Demo] Not installed:', res.wallet?.name);
+		}
+	};
 	const logout = () => disconnect();
 
 	const sendTx = async () => {

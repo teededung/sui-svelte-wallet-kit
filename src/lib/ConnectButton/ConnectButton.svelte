@@ -1,11 +1,11 @@
 <script>
 	import { connectWithModal, disconnect, account } from '$lib/SuiModule';
 
-	const { class: className = '', style = '' } = $props();
+	const { class: className = '', style = '', onWalletSelection } = $props();
 
-	const onClick = function () {
+	const onClick = async function () {
 		if (!account.value) {
-			connectWithModal();
+			await connectWithModal(onWalletSelection);
 		} else {
 			disconnect();
 		}

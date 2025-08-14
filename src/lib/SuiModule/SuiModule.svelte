@@ -34,6 +34,7 @@
 	export let getConnectModal = () => connectModal;
 	let _onConnect = $state(() => {});
 	let _autoConnect = $state(false);
+	let _lastWalletSelection = $state();
 
 	const STORAGE_KEY = 'sui-module-connection';
 
@@ -459,11 +460,35 @@
 		}
 	};
 
-	export const connectWithModal = async () => {
-		if (account.value) return;
-		let selectedWallet = await connectModal?.openAndWaitForResponse();
-		if (selectedWallet) {
-			await connect(selectedWallet);
+	export const lastWalletSelection = {
+		get value() {
+			return _lastWalletSelection;
+		},
+		clear() {
+			_lastWalletSelection = undefined;
+		}
+	};
+
+	export const connectWithModal = async (onSelection) => {
+		if (account.value) return { connected: true, alreadyConnected: true };
+		while (true) {
+			const result = await connectModal?.openAndWaitForResponse();
+			if (!result) {
+				return { wallet: undefined, installed: false, connected: false, cancelled: true };
+			}
+			// Support both old return (wallet) and new structured return ({ wallet, installed })
+			const selectedWallet = result?.wallet ?? result;
+			const installed =
+				typeof result === 'object' ? !!result?.installed : !!selectedWallet?.installed;
+			_lastWalletSelection = { wallet: selectedWallet, installed: !!installed };
+			try {
+				onSelection?.({ wallet: selectedWallet, installed, connected: false });
+			} catch {}
+			if (selectedWallet && installed) {
+				await connect(selectedWallet);
+				return { wallet: selectedWallet, installed: true, connected: true };
+			}
+			// stay in the loop and wait for the next selection while the modal remains open
 		}
 	};
 
@@ -589,23 +614,21 @@
 	const getAvailableWallets = (defaultWallets, detectedAdapters) => {
 		const adapters = Array.isArray(detectedAdapters) ? detectedAdapters : detectWalletAdapters();
 
-		const list = defaultWallets
-			.map((item) => {
-				const normalizedItem = normalizeWalletName(item.name);
-				const foundAdapter = adapters.find((walletAdapter) => {
-					const normalizedAdapter = normalizeWalletName(walletAdapter.name);
-					return (
-						normalizedItem.includes(normalizedAdapter) || normalizedAdapter.includes(normalizedItem)
-					);
-				});
+		const list = defaultWallets.map((item) => {
+			const normalizedItem = normalizeWalletName(item.name);
+			const foundAdapter = adapters.find((walletAdapter) => {
+				const normalizedAdapter = normalizeWalletName(walletAdapter.name);
+				return (
+					normalizedItem.includes(normalizedAdapter) || normalizedAdapter.includes(normalizedItem)
+				);
+			});
 
-				return {
-					...item,
-					adapter: foundAdapter ? foundAdapter : undefined,
-					installed: !!foundAdapter
-				};
-			})
-			.filter((item) => item.installed === true);
+			return {
+				...item,
+				adapter: foundAdapter ? foundAdapter : undefined,
+				installed: !!foundAdapter
+			};
+		});
 
 		return list;
 	};

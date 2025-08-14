@@ -123,25 +123,49 @@
 		try {
 			const modal = typeof getConnectModal === 'function' ? getConnectModal() : undefined;
 			if (!modal) return;
-			const selectedWallet = await modal.openAndWaitForResponse();
-			if (!selectedWallet) return;
-			// If the same wallet is chosen again but it doesn't support account picker, do nothing
-			if (
-				walletName.value &&
-				selectedWallet.name === walletName.value &&
-				!supportsAccountPicker(selectedWallet.name)
-			) {
+			while (true) {
+				const result = await modal.openAndWaitForResponse();
+				if (!result) return;
+				// Notify selection for unified UX (toast, etc.)
+				onWalletSelection?.(result);
+				const selectedWallet = result?.wallet ?? result;
+				const installed =
+					typeof result === 'object' ? !!result?.installed : !!selectedWallet?.installed;
+				if (!installed) {
+					// Continue waiting for another pick without closing
+					continue;
+				}
+				// If the same wallet is chosen again but it doesn't support account picker, do nothing
+				if (
+					walletName.value &&
+					selectedWallet?.name === walletName.value &&
+					!supportsAccountPicker(selectedWallet.name)
+				) {
+					return;
+				}
+				try {
+					disconnect();
+				} catch (_) {
+					// ignore
+				}
+				await connect(selectedWallet);
 				return;
 			}
-			try {
-				disconnect();
-			} catch (_) {
-				// ignore
-			}
-			await connect(selectedWallet);
 		} catch (err) {
 			error = err?.message || 'Failed to switch wallet';
 		}
+	};
+
+	// Capture selection when connecting via button (not connected state)
+	const onWalletSelection = (payload) => {
+		try {
+			const selectedWallet = payload?.wallet ?? payload;
+			const installed =
+				typeof payload === 'object' ? !!payload?.installed : !!selectedWallet?.installed;
+			if (!installed) {
+				console.log('[Page] Selected wallet not installed:', selectedWallet?.name);
+			}
+		} catch {}
 	};
 </script>
 
@@ -167,7 +191,7 @@
 
 		<div class="wallet-section">
 			<h2>Wallet Connection</h2>
-			<ConnectButton class="connect-btn" />
+			<ConnectButton class="connect-btn" {onWalletSelection} />
 			{#if account.value}
 				<button class="action-btn" style="margin-left: 0.75rem;" onclick={switchWallet}>
 					Switch Wallet
@@ -606,6 +630,9 @@
 
 	/* Responsive tweaks for mobile */
 	@media (max-width: 640px) {
+		.container {
+			padding: 1rem;
+		}
 		.github-link {
 			position: fixed;
 			top: calc(env(safe-area-inset-top, 0px) + 10px);
@@ -617,6 +644,30 @@
 
 		header {
 			padding-top: 0.75rem;
+		}
+
+		/* Stack action buttons vertically and avoid overflow */
+		.wallet-section :global(.connect-btn),
+		.wallet-section .action-btn {
+			display: block;
+			width: 100%;
+		}
+
+		.wallet-section .action-btn {
+			margin-left: 0 !important;
+			margin-top: 0.75rem;
+		}
+
+		/* Prevent long strings (addresses, etc.) from overflowing */
+		.account-info p,
+		.account-info li {
+			word-break: break-all;
+			overflow-wrap: anywhere;
+		}
+
+		/* Ensure selects fit viewport */
+		.account-select {
+			max-width: 100%;
 		}
 	}
 
@@ -657,6 +708,7 @@
 
 	.message-field {
 		width: 100%;
+		box-sizing: border-box;
 		padding: 0.75rem;
 		border: 1px solid rgba(148, 163, 184, 0.25);
 		border-radius: 10px;
