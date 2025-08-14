@@ -114,7 +114,7 @@ Detecting not-installed wallets from the Connect button:
 Exports from `sui-svelte-wallet-kit`:
 
 - Components: `SuiModule`, `ConnectButton`, `ConnectModal`
-- Connection: `connectWithModal`, `getConnectModal`, `connect(wallet)`, `disconnect`, `switchWallet(options?)`
+- Connection: `connectWithModal(onSelection?)`, `getConnectModal`, `connect(wallet)`, `disconnect`, `switchWallet(options?)`
 - Signing: `signAndExecuteTransaction(transaction)`, `signMessage(message)`, `canSignMessage()`
 - Wallet info: `wallet`, `walletName`, `walletIconUrl`, `lastWalletSelection`
 - Accounts: `account`, `accounts`, `accountsCount`, `activeAccountIndex`, `switchAccount(selector)`, `setAccountLabel(name)`
@@ -142,7 +142,9 @@ Examples:
 
 	// Returns { wallet, installed, connected, alreadyConnected? }
 	const connectNow = async () => {
-		const res = await connectWithModal();
+		const res = await connectWithModal(({ wallet, installed }) => {
+			if (!installed) console.log('Please install:', wallet?.name);
+		});
 		if (res && res.installed === false) {
 			console.log('[Demo] Not installed:', res.wallet?.name);
 		}
