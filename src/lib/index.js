@@ -12,6 +12,7 @@ export {
 	walletName,
 	walletIconUrl,
 	lastWalletSelection,
+	switchWallet,
 	connectWithModal,
 	getConnectModal,
 	connect,

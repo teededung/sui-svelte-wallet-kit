@@ -66,7 +66,7 @@ Behavior: toggles between Connect and Disconnect based on `account.value`. When 
 
 #### ConnectModal
 
-Used internally by `SuiModule`. You can access it via `getConnectModal()` and call `openAndWaitForResponse()` to let users reselect wallets while connected.
+Used internally by `SuiModule`. You can access it via `getConnectModal()` and call `openAndWaitForResponse()` to let users reselect wallets while connected. For convenience, you can also use the `switchWallet(options?)` helper (see API Reference).
 
 UI notes:
 
@@ -76,28 +76,16 @@ UI notes:
 
 ```svelte
 <script>
-	import { getConnectModal, connect, disconnect } from 'sui-svelte-wallet-kit';
+	import { switchWallet } from 'sui-svelte-wallet-kit';
 
-	// Re-select wallet while already connected
-	const switchWallet = async () => {
-		const modal = getConnectModal?.();
-		if (!modal) return;
-		const result = await modal.openAndWaitForResponse();
-		if (!result) return;
-
-		const picked = result?.wallet ?? result; // backward compatible
-		const installed = typeof result === 'object' ? !!result?.installed : !!picked?.installed;
-
-		if (!installed) {
-			// Show your toast here
-			console.log('[Demo] Selected wallet not installed:', picked?.name);
-			return;
+	// Simple programmatic switch (modal stays open until an installed wallet is picked or user cancels)
+	const simpleSwitch = async () => {
+		const res = await switchWallet();
+		if (res?.connected) {
+			console.log('Switched to', res.wallet?.name);
+		} else if (res?.cancelled) {
+			console.log('Switch cancelled');
 		}
-
-		try {
-			disconnect();
-		} catch {}
-		await connect(picked);
 	};
 </script>
 ```
@@ -126,7 +114,7 @@ Detecting not-installed wallets from the Connect button:
 Exports from `sui-svelte-wallet-kit`:
 
 - Components: `SuiModule`, `ConnectButton`, `ConnectModal`
-- Connection: `connectWithModal`, `getConnectModal`, `connect(wallet)`, `disconnect`
+- Connection: `connectWithModal`, `getConnectModal`, `connect(wallet)`, `disconnect`, `switchWallet(options?)`
 - Signing: `signAndExecuteTransaction(transaction)`, `signMessage(message)`, `canSignMessage()`
 - Wallet info: `wallet`, `walletName`, `walletIconUrl`, `lastWalletSelection`
 - Accounts: `account`, `accounts`, `accountsCount`, `activeAccountIndex`, `switchAccount(selector)`, `setAccountLabel(name)`
@@ -141,6 +129,7 @@ Examples:
 	import {
 		account,
 		connectWithModal,
+		switchWallet,
 		disconnect,
 		signAndExecuteTransaction,
 		signMessage,
@@ -157,6 +146,29 @@ Examples:
 		if (res && res.installed === false) {
 			console.log('[Demo] Not installed:', res.wallet?.name);
 		}
+	};
+
+	// Programmatic wallet switch with callbacks
+	// switchWallet accepts optional callbacks to customize UX
+	// { onSelection, shouldConnect, onBeforeDisconnect, onConnected, onCancel }
+	const doSwitch = async () => {
+		await switchWallet({
+			onSelection: ({ wallet, installed }) => {
+				if (!installed) console.log('Please install:', wallet?.name);
+			},
+			shouldConnect: ({ selectedWallet, currentWallet }) => {
+				// Skip reconnecting to the same wallet if it lacks native account picker
+				if (currentWallet?.name === selectedWallet?.name) return false;
+				return true;
+			},
+			onBeforeDisconnect: (current, next) => {
+				console.log('Switching from', current?.name, 'to', next?.name);
+			},
+			onConnected: (newWallet) => {
+				console.log('Connected to', newWallet?.name);
+			},
+			onCancel: () => console.log('Switch cancelled')
+		});
 	};
 	const logout = () => disconnect();
 

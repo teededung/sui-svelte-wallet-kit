@@ -471,12 +471,11 @@
 
 	export const connectWithModal = async (onSelection) => {
 		if (account.value) return { connected: true, alreadyConnected: true };
+		// Reuse the internal selection loop so behavior is consistent with switchWallet
 		while (true) {
 			const result = await connectModal?.openAndWaitForResponse();
-			if (!result) {
+			if (!result)
 				return { wallet: undefined, installed: false, connected: false, cancelled: true };
-			}
-			// Support both old return (wallet) and new structured return ({ wallet, installed })
 			const selectedWallet = result?.wallet ?? result;
 			const installed =
 				typeof result === 'object' ? !!result?.installed : !!selectedWallet?.installed;
@@ -484,11 +483,9 @@
 			try {
 				onSelection?.({ wallet: selectedWallet, installed, connected: false });
 			} catch {}
-			if (selectedWallet && installed) {
-				await connect(selectedWallet);
-				return { wallet: selectedWallet, installed: true, connected: true };
-			}
-			// stay in the loop and wait for the next selection while the modal remains open
+			if (!installed) continue;
+			await connect(selectedWallet);
+			return { wallet: selectedWallet, installed: true, connected: true };
 		}
 	};
 
@@ -557,6 +554,60 @@
 		}
 		walletAdapter = undefined;
 		_wallet = undefined;
+	};
+
+	// Programmatic wallet switch with modal and callbacks
+	// options.onSelection({ wallet, installed, connected:false }) -> notify every pick
+	// options.shouldConnect({ selectedWallet, currentWallet }) -> boolean to decide proceeding
+	// options.onBeforeDisconnect(currentWallet, selectedWallet)
+	// options.onConnected(newWallet)
+	// options.onCancel()
+	export const switchWallet = async (options = {}) => {
+		try {
+			const modal = typeof getConnectModal === 'function' ? getConnectModal() : undefined;
+			if (!modal) return { connected: false, cancelled: true };
+			while (true) {
+				const result = await modal.openAndWaitForResponse();
+				if (!result) {
+					try {
+						options?.onCancel?.();
+					} catch {}
+					return { connected: false, cancelled: true };
+				}
+				const selectedWallet = result?.wallet ?? result;
+				const installed =
+					typeof result === 'object' ? !!result?.installed : !!selectedWallet?.installed;
+				_lastWalletSelection = { wallet: selectedWallet, installed: !!installed };
+				try {
+					options?.onSelection?.({ wallet: selectedWallet, installed, connected: false });
+				} catch {}
+				if (!installed) {
+					continue;
+				}
+
+				const proceed =
+					typeof options?.shouldConnect === 'function'
+						? !!options.shouldConnect({ selectedWallet, currentWallet: _wallet })
+						: true;
+				if (!proceed) {
+					return { wallet: selectedWallet, installed: true, connected: false, skipped: true };
+				}
+
+				try {
+					options?.onBeforeDisconnect?.(_wallet, selectedWallet);
+				} catch {}
+				try {
+					disconnect();
+				} catch {}
+				await connect(selectedWallet);
+				try {
+					options?.onConnected?.(_wallet);
+				} catch {}
+				return { wallet: selectedWallet, installed: true, connected: true };
+			}
+		} catch (_) {
+			return { connected: false, error: 'switch-failed' };
+		}
 	};
 
 	export const signAndExecuteTransaction = async (transaction) => {

@@ -11,9 +11,8 @@
 		switchAccount,
 		activeAccountIndex,
 		connectWithModal,
-		getConnectModal,
-		connect,
 		disconnect,
+		switchWallet,
 		signAndExecuteTransaction,
 		signMessage,
 		canSignMessage,
@@ -118,39 +117,22 @@
 		detectedAdapters = Array.isArray(walletAdapters) ? walletAdapters : [];
 	};
 
-	// Open wallet selection modal even when already connected, then switch wallet
-	const switchWallet = async () => {
+	// Use packaged switchWallet with callbacks for custom UX
+	const onSwitchWallet = async () => {
 		try {
-			const modal = typeof getConnectModal === 'function' ? getConnectModal() : undefined;
-			if (!modal) return;
-			while (true) {
-				const result = await modal.openAndWaitForResponse();
-				if (!result) return;
-				// Notify selection for unified UX (toast, etc.)
-				onWalletSelection?.(result);
-				const selectedWallet = result?.wallet ?? result;
-				const installed =
-					typeof result === 'object' ? !!result?.installed : !!selectedWallet?.installed;
-				if (!installed) {
-					// Continue waiting for another pick without closing
-					continue;
+			await switchWallet({
+				onSelection: onWalletSelection,
+				shouldConnect: ({ selectedWallet }) => {
+					if (
+						walletName.value &&
+						selectedWallet?.name === walletName.value &&
+						!supportsAccountPicker(selectedWallet.name)
+					) {
+						return false;
+					}
+					return true;
 				}
-				// If the same wallet is chosen again but it doesn't support account picker, do nothing
-				if (
-					walletName.value &&
-					selectedWallet?.name === walletName.value &&
-					!supportsAccountPicker(selectedWallet.name)
-				) {
-					return;
-				}
-				try {
-					disconnect();
-				} catch (_) {
-					// ignore
-				}
-				await connect(selectedWallet);
-				return;
-			}
+			});
 		} catch (err) {
 			error = err?.message || 'Failed to switch wallet';
 		}
@@ -164,6 +146,7 @@
 				typeof payload === 'object' ? !!payload?.installed : !!selectedWallet?.installed;
 			if (!installed) {
 				console.log('[Page] Selected wallet not installed:', selectedWallet?.name);
+				alert('Please install the wallet: ' + selectedWallet?.name);
 			}
 		} catch {}
 	};
@@ -193,7 +176,7 @@
 			<h2>Wallet Connection</h2>
 			<ConnectButton class="connect-btn" {onWalletSelection} />
 			{#if account.value}
-				<button class="action-btn" style="margin-left: 0.75rem;" onclick={switchWallet}>
+				<button class="action-btn" style="margin-left: 0.75rem;" onclick={onSwitchWallet}>
 					Switch Wallet
 				</button>
 			{/if}
@@ -366,7 +349,11 @@
 		<div class="actions-section">
 			<h2>Available Actions</h2>
 			<div class="action-buttons">
-				<button class="action-btn" onclick={connectWithModal}>Connect with Modal</button>
+				{#if !account.value}
+					<button class="action-btn" onclick={() => connectWithModal(onWalletSelection)}>
+						Connect with Modal
+					</button>
+				{/if}
 				<button class="action-btn" onclick={disconnect} disabled={!account.value}>Disconnect</button
 				>
 				<button class="action-btn" onclick={checkDetectedWallets}>Check Detected Wallets</button>
