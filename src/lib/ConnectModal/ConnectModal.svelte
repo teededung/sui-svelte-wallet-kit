@@ -410,6 +410,8 @@
 	}
 
 	.wallet-name {
+		font-size: 0.875rem;
+		line-height: 1.1rem;
 		font-weight: 600;
 		color: #111827;
 		transition: color 0.2s ease;
@@ -418,6 +420,10 @@
 	.section {
 		display: block;
 		margin-bottom: 1rem;
+
+		&:last-child {
+			margin-bottom: 0;
+		}
 	}
 
 	.section-header {
@@ -484,5 +490,11 @@
 
 	.install-link:hover {
 		color: #7f1d1d;
+	}
+
+	@media (max-width: 768px) {
+		.wallet-list {
+			grid-template-columns: repeat(1, minmax(0, 1fr));
+		}
 	}
 </style>
