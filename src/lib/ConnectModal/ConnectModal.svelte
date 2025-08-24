@@ -46,24 +46,20 @@
 			for (const u of candidates) {
 				if (typeof u === 'string' && /^https?:\/\//.test(u)) return u;
 			}
-			return `https://chromewebstore.google.com/search/${encodeURIComponent(wallet?.name || 'Sui wallet')}`;
+			return `https://chromewebstore.google.com/search/${encodeURIComponent(wallet?.originalName || wallet?.name || 'Sui wallet')}`;
 		} catch (_) {
 			return 'https://chromewebstore.google.com/search/sui%20wallet';
 		}
 	};
 
-	const sortByName = (a, b) => (a?.name || '').localeCompare(b?.name || '');
+	const getWalletDisplayName = (wallet) => wallet?.displayName || wallet?.name || '';
 
 	const detectedWallets = $derived(
-		Array.isArray(availableWallets)
-			? availableWallets.filter((w) => w?.installed).sort(sortByName)
-			: []
+		Array.isArray(availableWallets) ? availableWallets.filter((w) => w?.installed) : []
 	);
 
 	const otherWallets = $derived(
-		Array.isArray(availableWallets)
-			? availableWallets.filter((w) => !w?.installed).sort(sortByName)
-			: []
+		Array.isArray(availableWallets) ? availableWallets.filter((w) => !w?.installed) : []
 	);
 
 	$effect(() => {
@@ -167,7 +163,7 @@
 			{#if notInstalledSelection}
 				<div class="install-hint" role="alert" bind:this={installHintEl}>
 					<div class="install-hint-row">
-						<strong>{notInstalledSelection.wallet?.name}</strong>
+						<strong>{getWalletDisplayName(notInstalledSelection.wallet)}</strong>
 						<span>is not installed.</span>
 					</div>
 					<a
@@ -202,9 +198,13 @@
 						<div class="wallet-list">
 							{#each detectedWallets as wallet (wallet.name)}
 								<button class="wallet-button" onclick={() => onSelected(wallet)}>
-									<img src={wallet.iconUrl} alt={wallet.name} class="wallet-icon" />
+									<img
+										src={wallet.iconUrl}
+										alt={getWalletDisplayName(wallet)}
+										class="wallet-icon"
+									/>
 									<div class="wallet-info">
-										<div class="wallet-name">{wallet.name}</div>
+										<div class="wallet-name">{getWalletDisplayName(wallet)}</div>
 									</div>
 									<svg class="wallet-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path
@@ -230,9 +230,13 @@
 							<div class="wallet-list">
 								{#each otherWallets as wallet (wallet.name)}
 									<button class="wallet-button" onclick={() => onSelected(wallet)}>
-										<img src={wallet.iconUrl} alt={wallet.name} class="wallet-icon" />
+										<img
+											src={wallet.iconUrl}
+											alt={getWalletDisplayName(wallet)}
+											class="wallet-icon"
+										/>
 										<div class="wallet-info">
-											<div class="wallet-name">{wallet.name}</div>
+											<div class="wallet-name">{getWalletDisplayName(wallet)}</div>
 										</div>
 										<svg class="wallet-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 											<path

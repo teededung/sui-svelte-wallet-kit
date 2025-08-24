@@ -43,6 +43,54 @@ yarn add svelte@^5.0.0
 </SuiModule>
 ```
 
+### Wallet Configuration
+
+You can customize wallet display names and ordering using the `walletConfig` prop:
+
+```svelte
+<script>
+	import { SuiModule, ConnectButton } from 'sui-svelte-wallet-kit';
+
+	const walletConfig = {
+		// Custom display names for wallets
+		customNames: {
+			'Slush — A Sui wallet': 'Slush',
+			'Martian Sui Wallet': 'Martian',
+			'OKX Wallet': 'OKX',
+			'OneKey Wallet': 'OneKey',
+			'Surf Wallet': 'Surf',
+			'TokenPocket Wallet': 'TokenPocket'
+		},
+		// Custom ordering (wallets not listed will appear after these in alphabetical order)
+		ordering: [
+			'Slush — A Sui wallet', // Show Slush first
+			'OKX Wallet', // Then OKX
+			'Phantom', // Then Phantom
+			'Suiet', // Then Suiet
+			'Martian Sui Wallet', // Then Martian
+			'OneKey Wallet', // Then OneKey
+			'Surf Wallet', // Then Surf
+			'TokenPocket Wallet' // Then TokenPocket
+		]
+	};
+</script>
+
+<SuiModule {walletConfig} autoConnect={true}>
+	<ConnectButton />
+</SuiModule>
+```
+
+**Configuration Options:**
+
+- `customNames`: Object mapping original wallet names to custom display names
+- `ordering`: Array defining the preferred order of wallets in the connect modal
+
+**Notes:**
+
+- Use the exact wallet names as detected by the browser (check console for available names)
+- Wallets not included in `ordering` will appear after the ordered ones, sorted alphabetically
+- Custom names only affect display; internal wallet identification remains unchanged
+
 ### Components
 
 #### SuiModule
@@ -53,6 +101,7 @@ Props:
 - `autoConnect?: boolean` (default: `false`)
 - `autoSuiNS?: boolean` (default: `true`)
 - `autoSuiBalance?: boolean` (default: `true`)
+- `walletConfig?: { customNames?: Record<string, string>; ordering?: string[] }` (optional wallet customization)
 
 #### ConnectButton
 

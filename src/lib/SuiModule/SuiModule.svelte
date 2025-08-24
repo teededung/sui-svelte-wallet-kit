@@ -35,6 +35,7 @@
 	let _onConnect = $state(() => {});
 	let _autoConnect = $state(false);
 	let _lastWalletSelection = $state();
+	let _walletConfig = $state({});
 
 	const STORAGE_KEY = 'sui-module-connection';
 
@@ -662,7 +663,54 @@
 			.replace(/wallet$/g, '')
 			.replace(/[^a-z0-9]/g, '');
 
-	const getAvailableWallets = (defaultWallets, detectedAdapters) => {
+	const applyWalletConfig = (wallets, config) => {
+		const { customNames = {}, ordering = [] } = config;
+
+		// Debug: log wallet names để dễ config (uncomment when needed)
+		// if (isBrowser && wallets.length > 0) {
+		// 	console.log('🔍 Available wallet names for config:', wallets.map((w) => w.name));
+		// }
+
+		// Apply custom names
+		const walletsWithCustomNames = wallets.map((wallet) => {
+			const customName = customNames[wallet.name];
+			return customName
+				? { ...wallet, displayName: customName, originalName: wallet.name }
+				: wallet;
+		});
+
+		// Apply custom ordering
+		// if (isBrowser && ordering.length > 0) {
+		// 	console.log('📋 Applying ordering:', [...ordering]);
+		// }
+		const result =
+			ordering.length > 0
+				? walletsWithCustomNames.sort((a, b) => {
+						const aName = a.originalName || a.name;
+						const bName = b.originalName || b.name;
+						const aIndex = ordering.indexOf(aName);
+						const bIndex = ordering.indexOf(bName);
+
+						// If both wallets are in ordering, sort by order
+						if (aIndex !== -1 && bIndex !== -1) {
+							return aIndex - bIndex;
+						}
+						// If only a is in ordering, a comes first
+						if (aIndex !== -1) return -1;
+						// If only b is in ordering, b comes first
+						if (bIndex !== -1) return 1;
+						// If neither is in ordering, sort alphabetically
+						return aName.localeCompare(bName);
+					})
+				: walletsWithCustomNames;
+		// if (isBrowser && result.length > 0) {
+		// 	console.log('✅ Final wallet order:', result.map((w) => `${w.name} → ${w.displayName || w.name}`));
+		// }
+
+		return result;
+	};
+
+	const getAvailableWallets = (defaultWallets, detectedAdapters, config = {}) => {
 		const adapters = Array.isArray(detectedAdapters) ? detectedAdapters : detectWalletAdapters();
 
 		const list = defaultWallets.map((item) => {
@@ -681,7 +729,7 @@
 			};
 		});
 
-		return list;
+		return applyWalletConfig(list, config);
 	};
 
 	const detectWalletAdapters = () => {
@@ -767,7 +815,7 @@
 				// );
 			}
 		} catch {}
-		const wallets = getAvailableWallets(AllDefaultWallets, snapshot);
+		const wallets = getAvailableWallets(AllDefaultWallets, snapshot, _walletConfig);
 		try {
 			const walletNames = wallets
 				.map((w) => w?.name)
@@ -833,6 +881,7 @@
 		autoConnect = false,
 		autoSuiNS = true,
 		autoSuiBalance = true,
+		walletConfig = {},
 		children
 	} = $props();
 	if (onConnect) {
@@ -841,6 +890,7 @@
 	_autoConnect = autoConnect;
 	_autoFetchSuiNS = !!autoSuiNS;
 	_autoFetchBalance = !!autoSuiBalance;
+	_walletConfig = walletConfig || {};
 
 	// Mirror discovery to instance state for reactive UI updates
 	let _discoveredAdapters = $state([]);
@@ -863,6 +913,11 @@
 	$effect.pre(() => {
 		// Start discovery after mount; idempotent
 		initWalletDiscovery();
+	});
+
+	$effect(() => {
+		// Update internal walletConfig when prop changes
+		_walletConfig = walletConfig || {};
 	});
 
 	$effect(() => {
