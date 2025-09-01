@@ -713,6 +713,7 @@
 	const getAvailableWallets = (defaultWallets, detectedAdapters, config = {}) => {
 		const adapters = Array.isArray(detectedAdapters) ? detectedAdapters : detectWalletAdapters();
 
+		// Map default wallets to detected adapters by fuzzy-normalized name matching
 		const list = defaultWallets.map((item) => {
 			const normalizedItem = normalizeWalletName(item.name);
 			const foundAdapter = adapters.find((walletAdapter) => {
@@ -729,7 +730,24 @@
 			};
 		});
 
-		return applyWalletConfig(list, config);
+		// Include extra detected adapters that are NOT present in the default wallet list
+		// This covers wallets like Coin98 that support Sui but aren't listed in the SDK defaults
+		const defaultNormalizedNames = defaultWallets.map((w) => normalizeWalletName(w.name));
+		const extraAdapters = adapters.filter((a) => {
+			const na = normalizeWalletName(a.name);
+			return !defaultNormalizedNames.some((dn) => dn.includes(na) || na.includes(dn));
+		});
+
+		const extraWalletEntries = extraAdapters.map((a) => ({
+			name: a.name,
+			originalName: a.name,
+			displayName: a.name,
+			iconUrl: a.icon,
+			adapter: a,
+			installed: true
+		}));
+
+		return applyWalletConfig([...list, ...extraWalletEntries], config);
 	};
 
 	const detectWalletAdapters = () => {
