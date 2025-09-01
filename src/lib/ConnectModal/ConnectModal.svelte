@@ -206,14 +206,17 @@
 									<div class="wallet-info">
 										<div class="wallet-name">{getWalletDisplayName(wallet)}</div>
 									</div>
-									<svg class="wallet-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											stroke-width="2"
-											d="M9 5l7 7-7 7"
-										></path>
-									</svg>
+									<div class="wallet-status">
+										<span class="installed-badge">Installed</span>
+										<svg class="wallet-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												stroke-width="2"
+												d="M9 5l7 7-7 7"
+											></path>
+										</svg>
+									</div>
 								</button>
 							{/each}
 						</div>
@@ -223,13 +226,26 @@
 				{#if otherWallets.length > 0}
 					<div class="section">
 						<button class="toggle-other-btn" onclick={() => (showOther = !showOther)}>
-							{#if showOther}Hide other wallets{/if}
-							{#if !showOther}Show other wallets ({otherWallets.length}){/if}
+							<svg
+								class="toggle-icon"
+								class:rotated={showOther}
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+							>
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M19 9l-7 7-7-7"
+								></path>
+							</svg>
+							<span>{showOther ? 'Hide' : 'More'} ({otherWallets.length})</span>
 						</button>
 						{#if showOther}
 							<div class="wallet-list">
 								{#each otherWallets as wallet (wallet.name)}
-									<button class="wallet-button" onclick={() => onSelected(wallet)}>
+									<div class="wallet-button disabled">
 										<img
 											src={wallet.iconUrl}
 											alt={getWalletDisplayName(wallet)}
@@ -238,15 +254,18 @@
 										<div class="wallet-info">
 											<div class="wallet-name">{getWalletDisplayName(wallet)}</div>
 										</div>
-										<svg class="wallet-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path
-												stroke-linecap="round"
-												stroke-linejoin="round"
-												stroke-width="2"
-												d="M9 5l7 7-7 7"
-											></path>
-										</svg>
-									</button>
+										<div class="wallet-status">
+											<a
+												href={getInstallUrlForWallet(wallet)}
+												target="_blank"
+												rel="noopener noreferrer"
+												class="install-label"
+											>
+												Install
+											</a>
+											<div class="arrow-spacer"></div>
+										</div>
+									</div>
 								{/each}
 							</div>
 						{/if}
@@ -292,9 +311,10 @@
 		box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
 		padding: 1.5rem;
 		width: 100%;
-		max-width: 28rem;
+		max-width: 22rem;
 		max-height: min(85vh, 700px);
 		overflow-y: auto;
+		overflow-x: hidden;
 		animation: fadeInZoom 0.2s ease-out;
 		z-index: 3;
 	}
@@ -378,9 +398,13 @@
 	}
 
 	.wallet-list {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
+		display: flex;
+		flex-direction: column;
 		gap: 0.75rem;
+		max-height: 400px;
+		overflow-y: auto;
+		overflow-x: hidden;
+		padding-right: 0.25rem;
 	}
 
 	.wallet-button {
@@ -394,6 +418,9 @@
 		background: white;
 		cursor: pointer;
 		transition: all 0.2s ease;
+		/* Ensure padding and border are included in width */
+		box-sizing: border-box;
+		font: inherit;
 	}
 
 	.wallet-button:hover {
@@ -411,6 +438,8 @@
 	.wallet-info {
 		flex: 1;
 		text-align: left;
+		/* Allow the name to shrink inside a flex row */
+		min-width: 0;
 	}
 
 	.wallet-name {
@@ -419,6 +448,10 @@
 		font-weight: 600;
 		color: #111827;
 		transition: color 0.2s ease;
+		/* Prevent overflowing long wallet names */
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.section {
@@ -448,11 +481,25 @@
 		font-weight: 600;
 		margin-bottom: 0.75rem;
 		transition: all 0.2s ease;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		justify-content: center;
 	}
 
 	.toggle-other-btn:hover {
 		background: #f3f4f6;
 		border-color: #d1d5db;
+	}
+
+	.toggle-icon {
+		width: 1rem;
+		height: 1rem;
+		transition: transform 0.2s ease;
+	}
+
+	.toggle-icon.rotated {
+		transform: rotate(180deg);
 	}
 
 	.wallet-button:hover .wallet-name {
@@ -468,6 +515,58 @@
 
 	.wallet-button:hover .wallet-arrow {
 		color: #2563eb;
+	}
+
+	.wallet-status {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		/* Keep the status area from shrinking so the name can truncate */
+		flex-shrink: 0;
+	}
+
+	.installed-badge {
+		background: #dcfce7;
+		color: #166534;
+		font-size: 0.75rem;
+		font-weight: 600;
+		padding: 0.125rem 0.375rem;
+		border-radius: 0.25rem;
+		border: 1px solid #bbf7d0;
+		white-space: nowrap;
+	}
+
+	.wallet-button.disabled {
+		cursor: default;
+		opacity: 0.7;
+	}
+
+	.wallet-button.disabled:hover {
+		border-color: #e5e7eb;
+		background: white;
+	}
+
+	.install-label {
+		color: #2563eb;
+		font-size: 0.75rem;
+		font-weight: 600;
+		text-decoration: underline;
+		padding: 0.125rem 0.375rem;
+		border-radius: 0.25rem;
+		transition: all 0.15s ease;
+		cursor: pointer;
+	}
+
+	.install-label:hover {
+		color: #1d4ed8;
+		background: #eff6ff;
+		text-decoration: none;
+	}
+
+	.arrow-spacer {
+		width: 1.25rem;
+		height: 1.25rem;
+		flex-shrink: 0;
 	}
 
 	.install-hint {
@@ -496,9 +595,22 @@
 		color: #7f1d1d;
 	}
 
-	@media (max-width: 768px) {
-		.wallet-list {
-			grid-template-columns: repeat(1, minmax(0, 1fr));
-		}
+	/* Custom scrollbar styling */
+	.wallet-list::-webkit-scrollbar {
+		width: 6px;
+	}
+
+	.wallet-list::-webkit-scrollbar-track {
+		background: #f1f5f9;
+		border-radius: 3px;
+	}
+
+	.wallet-list::-webkit-scrollbar-thumb {
+		background: #cbd5e1;
+		border-radius: 3px;
+	}
+
+	.wallet-list::-webkit-scrollbar-thumb:hover {
+		background: #94a3b8;
 	}
 </style>

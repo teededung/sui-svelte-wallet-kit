@@ -36,29 +36,6 @@
 	let message = $state('Hello, Sui blockchain!');
 	let selectedAccountIndex = $state(-1);
 
-	// Example wallet configuration for custom names and ordering
-	const walletConfig = {
-		customNames: {
-			'Slush — A Sui wallet': 'Slush',
-			'Martian Sui Wallet': 'Martian',
-			'OKX Wallet': 'OKX',
-			'OneKey Wallet': 'OneKey',
-			'Surf Wallet': 'Surf',
-			'TokenPocket Wallet': 'TokenPocket'
-		},
-		ordering: [
-			'Slush — A Sui wallet', // Show Slush first
-			'OKX Wallet', // Then OKX
-			'Phantom', // Then Phantom
-			'Suiet', // Then Suiet
-			'Martian Sui Wallet', // Then Martian
-			'OneKey Wallet', // Then OneKey
-			'Surf Wallet', // Then Surf
-			'TokenPocket Wallet' // Then TokenPocket
-			// Other wallets (GlassWallet, Nightly) will appear after these in alphabetical order
-		]
-	};
-
 	const formatSui = (balance) => {
 		try {
 			const n = BigInt(balance);
@@ -175,7 +152,7 @@
 	};
 </script>
 
-<SuiModule {onConnect} {walletConfig} autoConnect={true} autoSuiNS={true} autoSuiBalance={true}>
+<SuiModule {onConnect} autoConnect={true} autoSuiNS={true} autoSuiBalance={true}>
 	<div class="container">
 		<header>
 			<a
