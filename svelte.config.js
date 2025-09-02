@@ -11,6 +11,9 @@ const config = {
 			$lib: './src/lib',
 			$routes: './src/routes'
 		}
+	},
+	vitePlugin: {
+		inspector: true
 	}
 };
 
