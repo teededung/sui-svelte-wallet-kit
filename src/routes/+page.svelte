@@ -5,6 +5,7 @@
 		account,
 		accounts,
 		accountsCount,
+		accountLoading,
 		wallet,
 		walletName,
 		walletIconUrl,

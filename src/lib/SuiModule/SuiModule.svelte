@@ -356,6 +356,12 @@
 			_account = undefined;
 		}
 	};
+	// Export account loading state
+	export const accountLoading = {
+		get value() {
+			return status === ConnectionStatus.CONNECTING;
+		}
+	};
 
 	export const suiNames = {
 		get value() {

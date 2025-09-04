@@ -166,7 +166,7 @@ Exports from `sui-svelte-wallet-kit`:
 - Connection: `connectWithModal(onSelection?)`, `getConnectModal`, `connect(wallet)`, `disconnect`, `switchWallet(options?)`
 - Signing: `signAndExecuteTransaction(transaction)`, `signMessage(message)`, `canSignMessage()`
 - Wallet info: `wallet`, `walletName`, `walletIconUrl`, `lastWalletSelection`
-- Accounts: `account`, `accounts`, `accountsCount`, `activeAccountIndex`, `switchAccount(selector)`, `setAccountLabel(name)`
+- Accounts: `account`, `accounts`, `accountsCount`, `activeAccountIndex`, `switchAccount(selector)`, `setAccountLabel(name)`, `accountLoading`
 - SuiNS: `suiNames`, `suiNamesLoading`, `suiNamesByAddress`
 - Balance: `suiBalance`, `suiBalanceLoading`, `suiBalanceByAddress`, `refreshSuiBalance(address?, { force?: boolean })`
 - Discovery: `walletAdapters`, `availableWallets`
@@ -177,6 +177,7 @@ Examples:
 <script>
 	import {
 		account,
+		accountLoading,
 		connectWithModal,
 		switchWallet,
 		disconnect,
