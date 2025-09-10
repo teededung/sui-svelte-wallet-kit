@@ -13,7 +13,7 @@
 </script>
 
 <script>
-	let { availableWallets } = $props();
+	let { availableWallets, onPickInstalled = undefined, zkLoginGoogle = false } = $props();
 	let isOpen = $state(false);
 	let showOther = $state(false);
 
@@ -100,8 +100,12 @@
 		// Keep modal open for not installed to allow user to pick another wallet
 		if (wallet?.installed) {
 			notInstalledSelection = undefined;
+			// Start connection immediately within the click handler to preserve user gesture
+			try {
+				onPickInstalled?.(wallet);
+			} catch {}
 			if (resolve.value) {
-				resolve.value({ wallet, installed: true });
+				resolve.value({ wallet, installed: true, started: true });
 			}
 			connectModal?.close();
 			return;
@@ -207,7 +211,9 @@
 										<div class="wallet-name">{getWalletDisplayName(wallet)}</div>
 									</div>
 									<div class="wallet-status">
-										<span class="installed-badge">Installed</span>
+										{#if !zkLoginGoogle}
+											<span class="installed-badge">Installed</span>
+										{/if}
 										<svg class="wallet-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 											<path
 												stroke-linecap="round"

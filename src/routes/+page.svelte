@@ -27,6 +27,7 @@
 		availableWallets
 	} from '$lib';
 	import { Transaction } from '@mysten/sui/transactions';
+	import { isZkLoginWallet, getZkLoginInfo } from '$lib';
 
 	let transactionResult = $state(null);
 	let signatureResult = $state(null);
@@ -36,6 +37,8 @@
 	let detectedAdapters = $state([]);
 	let message = $state('Hello, Sui blockchain!');
 	let selectedAccountIndex = $state(-1);
+	let zkInfo = $state(null);
+	import { PUBLIC_GOOGLE_CLIENT_ID, PUBLIC_ENOKI_API_KEY } from '$env/static/public';
 
 	const formatSui = (balance) => {
 		try {
@@ -114,6 +117,18 @@
 		selectedAccountIndex = activeAccountIndex.value;
 	});
 
+	$effect(async () => {
+		if (account.value) {
+			try {
+				zkInfo = await getZkLoginInfo();
+			} catch {
+				zkInfo = null;
+			}
+		} else {
+			zkInfo = null;
+		}
+	});
+
 	const checkDetectedWallets = () => {
 		detectedAdapters = Array.isArray(walletAdapters) ? walletAdapters : [];
 	};
@@ -151,9 +166,32 @@
 			}
 		} catch {}
 	};
+
+	const walletConfig = {
+		// Custom ordering (wallets not listed will appear after these in alphabetical order)
+		ordering: [
+			'Sign in with Google', // Then Google
+			'Slush — A Sui wallet', // Show Slush first
+			'OKX Wallet', // Then OKX
+			'Phantom', // Then Phantom
+			'Suiet' // Then Suiet
+		]
+	};
+
+	const zkLoginGoogle = {
+		apiKey: PUBLIC_ENOKI_API_KEY,
+		googleClientId: PUBLIC_GOOGLE_CLIENT_ID
+	};
 </script>
 
-<SuiModule {onConnect} autoConnect={true} autoSuiNS={true} autoSuiBalance={true}>
+<SuiModule
+	{zkLoginGoogle}
+	{walletConfig}
+	{onConnect}
+	autoConnect={true}
+	autoSuiNS={true}
+	autoSuiBalance={true}
+>
 	<div class="container">
 		<header>
 			<a
@@ -244,6 +282,20 @@
 						</p>
 					{/if}
 					<p><strong>Chains:</strong> {account.value.chains?.join(', ') || 'N/A'}</p>
+					{#if zkInfo}
+						<div class="zklogin-box">
+							<strong>zkLogin (Enoki)</strong>
+							{#if zkInfo.metadata}
+								<p><strong>Provider:</strong> {zkInfo.metadata?.provider || 'N/A'}</p>
+							{/if}
+							{#if zkInfo.session}
+								<p><strong>Session:</strong></p>
+								<pre class="zk-json">{JSON.stringify(zkInfo.session, null, 2)}</pre>
+							{:else}
+								<p>No zkLogin session info.</p>
+							{/if}
+						</div>
+					{/if}
 				</div>
 			{/if}
 			{#if account.value}
@@ -317,11 +369,11 @@
 							Your current wallet does not support message signing. This feature requires a wallet
 							that implements the <code>sui:signMessage</code> standard.
 						</p>
-						<p><strong>Wallets that support message signing:</strong></p>
+						<p><strong>Some wallets that support message signing:</strong></p>
 						<ul>
-							<li>Suiet Wallet (latest version)</li>
-							<li>Sui Wallet (official)</li>
-							<li>Martian Wallet</li>
+							<li>Slush Wallet</li>
+							<li>Suiet Wallet</li>
+							<li>OKX Wallet</li>
 						</ul>
 						<p>
 							Please try connecting with a different wallet or check if your wallet has updates
@@ -336,13 +388,12 @@
 			{#if signatureResult}
 				<div class="result">
 					<h4>Signature Result:</h4>
-					<div class="signature-details">
-						<p><strong>Original Message:</strong> {message}</p>
-						<p><strong>Message Bytes:</strong> <code>{signatureResult.messageBytes}</code></p>
-						<p>
-							<strong>Signature:</strong> <code class="signature">{signatureResult.signature}</code>
-						</p>
-					</div>
+					<p><strong>Original Message:</strong> {message}</p>
+					<p><strong>Message Bytes:</strong> <code>{signatureResult.messageBytes}</code></p>
+					<strong>Signature:</strong>
+					<p class="signature-details">
+						<code class="signature">{signatureResult.signature}</code>
+					</p>
 				</div>
 			{/if}
 		</div>
@@ -751,20 +802,6 @@
 		cursor: not-allowed;
 	}
 
-	.signature-details {
-		background: rgba(255, 255, 255, 0.04);
-		padding: 1rem;
-		border-radius: 10px;
-		margin-top: 0.5rem;
-		border: 1px solid rgba(255, 255, 255, 0.12);
-	}
-
-	.signature-details p {
-		margin: 0.5rem 0;
-		word-break: break-all;
-		color: #cbd5e1;
-	}
-
 	.signature-details code {
 		background: rgba(255, 255, 255, 0.07);
 		padding: 0.25rem 0.5rem;
@@ -815,5 +852,20 @@
 		border-radius: 4px;
 		font-size: 0.875rem;
 		border: 1px solid rgba(245, 158, 11, 0.35);
+	}
+	.zk-json {
+		font-size: 0.75rem;
+		background: #0b1220;
+		color: #cbd5e1;
+		padding: 8px;
+		border-radius: 6px;
+		overflow: auto;
+	}
+	.zklogin-box {
+		margin-top: 8px;
+		padding: 8px;
+		border: 1px solid #1f2937;
+		border-radius: 8px;
+		background: #0a0f1a;
 	}
 </style>
