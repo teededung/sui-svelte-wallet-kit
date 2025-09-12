@@ -21,6 +21,8 @@ export {
 	signAndExecuteTransaction,
 	signMessage,
 	canSignMessage,
+	isZkLoginWallet,
+	getZkLoginInfo,
 	suiNames,
 	suiNamesLoading,
 	suiNamesByAddress,
