@@ -1,5 +1,7 @@
 # Sui Svelte Wallet Kit
 
+> Status: This package is under active development and is not production‑ready yet. APIs and behavior may change without notice. Use for experimentation and development only.
+
 A Svelte 5 wallet kit for the Sui blockchain. Ship wallet connection, multi‑account management, SuiNS names, SUI balance, transaction and message signing with simple components and typed utilities.
 
 ### Features
@@ -119,8 +121,7 @@ Used internally by `SuiModule`. You can access it via `getConnectModal()` and ca
 
 UI notes:
 
-- Two-column grid layout.
-- Installed wallets are labeled "detected" and shown first.
+- Installed wallets are labeled "Installed" and shown first.
 - A toggle button "Show other wallets" reveals the rest. The modal has a built-in max-height and scroll for long lists.
 
 ```svelte
@@ -158,6 +159,46 @@ Detecting not-installed wallets from the Connect button:
 <ConnectButton class="connect-btn" {onWalletSelection} />
 ```
 
+### Enoki zkLogin (Google)
+
+Enable Google zkLogin via Enoki by passing the `zkLoginGoogle` config to `SuiModule`.
+
+Requirements:
+
+- Create an API key in the Enoki Portal: [Enoki Portal](https://enoki.mystenlabs.com/)
+- Create a Google OAuth Client ID (typically ends with `.apps.googleusercontent.com`)
+
+References:
+
+- Enoki Signing In: [docs](https://docs.enoki.mystenlabs.com/ts-sdk/sign-in)
+- Enoki HTTP API Specification: [docs](https://docs.enoki.mystenlabs.com/http-api/openapi)
+
+Basic usage:
+
+```svelte
+<script>
+	import { SuiModule, ConnectButton } from 'sui-svelte-wallet-kit';
+
+	const zkLoginGoogle = {
+		apiKey: 'ENOKI_API_KEY',
+		googleClientId: 'GOOGLE_CLIENT_ID.apps.googleusercontent.com',
+		// Optional: choose network: 'mainnet' | 'testnet' | 'devnet'
+		network: 'testnet'
+	};
+</script>
+
+<SuiModule {zkLoginGoogle} autoConnect={true}>
+	<ConnectButton />
+</SuiModule>
+```
+
+Notes:
+
+- The "Sign in with Google" entry appears in the Connect modal only when `zkLoginGoogle` is provided and passes basic validation.
+- The SDK probes your API key once via `GET /v1/app` for an early validity check.
+- You can change networks by setting `zkLoginGoogle.network`. Default is: `mainnet`
+- Check browser console logs for detailed hints emitted by `SuiModule`.
+
 ### API Reference
 
 Exports from `sui-svelte-wallet-kit`:
@@ -170,6 +211,7 @@ Exports from `sui-svelte-wallet-kit`:
 - SuiNS: `suiNames`, `suiNamesLoading`, `suiNamesByAddress`
 - Balance: `suiBalance`, `suiBalanceLoading`, `suiBalanceByAddress`, `refreshSuiBalance(address?, { force?: boolean })`
 - Discovery: `walletAdapters`, `availableWallets`
+- Enoki/zkLogin: `isZkLoginWallet()`, `getZkLoginInfo()`
 
 Examples:
 
@@ -186,55 +228,18 @@ Examples:
 		canSignMessage,
 		switchAccount,
 		suiBalance,
-		refreshSuiBalance
+		refreshSuiBalance,
+		isZkLoginWallet,
+		getZkLoginInfo
 	} from 'sui-svelte-wallet-kit';
 	import { Transaction } from '@mysten/sui/transactions';
 
-	// Returns { wallet, installed, connected, alreadyConnected? }
-	const connectNow = async () => {
-		const res = await connectWithModal(({ wallet, installed }) => {
-			if (!installed) console.log('Please install:', wallet?.name);
-		});
-		if (res && res.installed === false) {
-			console.log('[Demo] Not installed:', res.wallet?.name);
+	$effect(async () => {
+		if (account.value && isZkLoginWallet()) {
+			const info = await getZkLoginInfo();
+			console.log('zkLogin session/metadata:', info);
 		}
-	};
-
-	// Programmatic wallet switch with callbacks
-	// switchWallet accepts optional callbacks to customize UX
-	// { onSelection, shouldConnect, onBeforeDisconnect, onConnected, onCancel }
-	const doSwitch = async () => {
-		await switchWallet({
-			onSelection: ({ wallet, installed }) => {
-				if (!installed) console.log('Please install:', wallet?.name);
-			},
-			shouldConnect: ({ selectedWallet, currentWallet }) => {
-				// Skip reconnecting to the same wallet if it lacks native account picker
-				if (currentWallet?.name === selectedWallet?.name) return false;
-				return true;
-			},
-			onBeforeDisconnect: (current, next) => {
-				console.log('Switching from', current?.name, 'to', next?.name);
-			},
-			onConnected: (newWallet) => {
-				console.log('Connected to', newWallet?.name);
-			},
-			onCancel: () => console.log('Switch cancelled')
-		});
-	};
-	const logout = () => disconnect();
-
-	const sendTx = async () => {
-		const tx = new Transaction();
-		tx.transferObjects([tx.splitCoins(tx.gas, [0])], account.value.address);
-		await signAndExecuteTransaction(tx);
-	};
-
-	const signMsg = async () => {
-		if (!canSignMessage()) return;
-		const res = await signMessage('hello');
-		console.log(res.signature, res.messageBytes);
-	};
+	});
 </script>
 ```
 
@@ -266,10 +271,6 @@ Override the modal by targeting its classes:
 
 Built on `@suiet/wallet-sdk` and Wallet Radar. Detects popular Sui wallets such as Slush, Suiet, Sui Wallet, Ethos, Surf, Glass, and others available in the browser.
 
-### Examples
-
-See `src/routes/+page.svelte` for a full working demo including connect, account info, SuiNS, balance, transaction and message signing.
-
 ### TypeScript
 
 All exports are typed. You can use them in TS Svelte files directly.
@@ -298,3 +299,238 @@ MIT — see `LICENSE`.
 
 - Repository: `https://github.com/teededung/sui-svelte-wallet-kit`
 - Issues: `https://github.com/teededung/sui-svelte-wallet-kit/issues`
+
+### More Usage Examples
+
+Below are a few practical examples adapted from the demo page (`src/routes/+page.svelte`).
+
+Connect, switch, disconnect with UX callbacks:
+
+```svelte
+<script>
+	import {
+		ConnectButton,
+		connectWithModal,
+		switchWallet,
+		disconnect,
+		walletName
+	} from 'sui-svelte-wallet-kit';
+
+	const onWalletSelection = (payload) => {
+		const picked = payload?.wallet ?? payload;
+		const installed = typeof payload === 'object' ? !!payload?.installed : !!picked?.installed;
+		if (!installed) alert('Please install the wallet: ' + picked?.name);
+	};
+
+	const onSwitchWallet = async () => {
+		await switchWallet({
+			onSelection: onWalletSelection,
+			shouldConnect: ({ selectedWallet }) => {
+				// Example: skip reconnecting to the same wallet if it lacks native account picker
+				if (walletName.value && selectedWallet?.name === walletName.value) return false;
+				return true;
+			}
+		});
+	};
+</script>
+
+<ConnectButton class="connect-btn" {onWalletSelection} />
+<button onclick={onSwitchWallet}>Switch Wallet</button>
+<button onclick={disconnect}>Disconnect</button>
+```
+
+Show account info, SuiNS, balance, and refresh balance:
+
+```svelte
+<script>
+	import {
+		account,
+		accountsCount,
+		suiNames,
+		suiNamesLoading,
+		suiBalance,
+		suiBalanceLoading,
+		refreshSuiBalance
+	} from 'sui-svelte-wallet-kit';
+
+	const formatSui = (balance) => {
+		try {
+			const n = BigInt(balance);
+			const whole = n / 1000000000n;
+			const frac = n % 1000000000n;
+			const fracStr = frac.toString().padStart(9, '0').replace(/0+$/, '');
+			return fracStr ? `${whole}.${fracStr}` : whole.toString();
+		} catch (_) {
+			return balance ?? '0';
+		}
+	};
+</script>
+
+{#if account.value}
+	<p><strong>Address:</strong> {account.value.address}</p>
+	<p><strong>Chains:</strong> {account.value.chains?.join(', ') || 'N/A'}</p>
+	{#if suiNamesLoading.value}
+		<p><strong>SuiNS Names:</strong> Loading...</p>
+	{:else}
+		<p>
+			<strong>SuiNS Names:</strong>
+			{Array.isArray(suiNames.value) && suiNames.value.length > 0
+				? suiNames.value.join(', ')
+				: 'N/A'}
+		</p>
+	{/if}
+	<p>
+		<strong>SUI Balance:</strong>
+		{#if suiBalanceLoading.value}
+			Loading...
+		{:else}
+			{formatSui(suiBalance.value || '0')} SUI
+		{/if}
+	</p>
+	<button
+		onclick={() => refreshSuiBalance(account.value.address)}
+		disabled={!account.value || suiBalanceLoading.value}
+	>
+		Refresh Balance
+	</button>
+{/if}
+```
+
+Sign and execute a simple transaction:
+
+```svelte
+<script>
+	import { signAndExecuteTransaction, account } from 'sui-svelte-wallet-kit';
+	import { Transaction } from '@mysten/sui/transactions';
+
+	let isLoading = false;
+	let transactionResult = null;
+	let error = null;
+
+	const testTransaction = async () => {
+		if (!account.value) {
+			error = 'Please connect your wallet first';
+			return;
+		}
+		isLoading = true;
+		error = null;
+		transactionResult = null;
+		try {
+			const tx = new Transaction();
+			// Example: transfer 0 SUI to self (no-op); replace with your own commands
+			tx.transferObjects([tx.splitCoins(tx.gas, [0])], account.value.address);
+			transactionResult = await signAndExecuteTransaction(tx);
+		} catch (err) {
+			error = err?.message || 'Transaction failed';
+		} finally {
+			isLoading = false;
+		}
+	};
+</script>
+
+<button onclick={testTransaction} disabled={isLoading}>
+	{isLoading ? 'Signing Transaction...' : 'Test Transaction (0 SUI transfer)'}
+</button>
+{#if error}
+	<p style="color:#fca5a5">{error}</p>
+{/if}
+{#if transactionResult}
+	<pre>{JSON.stringify(transactionResult, null, 2)}</pre>
+{/if}
+```
+
+Sign a message (works with wallets supporting `sui:signMessage` or Enoki `sui:signPersonalMessage`):
+
+```svelte
+<script>
+	import { canSignMessage, signMessage, account } from 'sui-svelte-wallet-kit';
+	let message = 'Hello, Sui blockchain!';
+	let signatureResult = null;
+	let isSigningMessage = false;
+	let error = null;
+
+	const testSignMessage = async () => {
+		if (!account.value) {
+			error = 'Please connect your wallet first';
+			return;
+		}
+		isSigningMessage = true;
+		error = null;
+		signatureResult = null;
+		try {
+			signatureResult = await signMessage(message);
+		} catch (err) {
+			error = err?.message || 'Message signing failed';
+		} finally {
+			isSigningMessage = false;
+		}
+	};
+</script>
+
+{#if account.value}
+	{#if canSignMessage()}
+		<input bind:value={message} placeholder="Enter message to sign" />
+		<button onclick={testSignMessage} disabled={isSigningMessage}>
+			{isSigningMessage ? 'Signing Message...' : 'Sign Message'}
+		</button>
+	{:else}
+		<p>Current wallet does not support message signing.</p>
+	{/if}
+{:else}
+	<p>Connect your wallet to sign messages</p>
+{/if}
+
+{#if signatureResult}
+	<p><strong>Signature:</strong> <code>{signatureResult.signature}</code></p>
+{/if}
+```
+
+Show zkLogin (Enoki) session/metadata when connected via Google:
+
+```svelte
+<script>
+	import { getZkLoginInfo, account } from 'sui-svelte-wallet-kit';
+	let zkInfo = null;
+	$effect(async () => {
+		zkInfo = account.value ? await getZkLoginInfo() : null;
+	});
+</script>
+
+{#if zkInfo}
+	<div>
+		<strong>zkLogin (Enoki)</strong>
+		{#if zkInfo.metadata}
+			<p><strong>Provider:</strong> {zkInfo.metadata?.provider || 'N/A'}</p>
+		{/if}
+		{#if zkInfo.session}
+			<p><strong>Session:</strong></p>
+			<pre>{JSON.stringify(zkInfo.session, null, 2)}</pre>
+		{:else}
+			<p>No zkLogin session info.</p>
+		{/if}
+	</div>
+{/if}
+```
+
+Account switching by index:
+
+```svelte
+<script>
+	import { accounts, activeAccountIndex, switchAccount } from 'sui-svelte-wallet-kit';
+	let selectedAccountIndex = -1;
+	$effect(() => {
+		selectedAccountIndex = activeAccountIndex.value;
+	});
+	const onAccountChange = () => switchAccount(Number(selectedAccountIndex));
+</script>
+
+{#if accounts.value.length > 1}
+	<select bind:value={selectedAccountIndex} onchange={onAccountChange}>
+		{#each accounts.value as acc, i}
+			<option value={i} selected={i === activeAccountIndex.value}>
+				#{i + 1} — {acc.address}
+			</option>
+		{/each}
+	</select>
+{/if}
+```

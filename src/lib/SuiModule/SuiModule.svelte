@@ -71,30 +71,35 @@
 						);
 					} catch {}
 				} else {
-					try {
-						const suspiciousApiKey = typeof apiKey === 'string' && apiKey.length < 16;
-						const suspiciousGoogleId =
-							typeof googleId === 'string' && !googleId.endsWith('.apps.googleusercontent.com');
-						if (suspiciousApiKey || suspiciousGoogleId) {
-							console.warn(
-								`[SuiModule] Enoki config looks unusual: ${suspiciousApiKey ? 'apiKey too short; ' : ''}${suspiciousGoogleId ? 'googleClientId should typically end with .apps.googleusercontent.com; ' : ''}please verify`
-							);
-						}
-					} catch {}
-
-					try {
-						registerEnokiWallets({
-							client: _clientCache[network],
-							network: network,
-							apiKey,
-							providers: {
-								google: { clientId: googleId }
-							}
-						});
-					} catch (err) {
+					if (isSuspiciousEnokiConfig(apiKey, googleId)) {
+						_enokiKeyValid = false;
 						try {
-							console.error('[SuiModule] Failed to register Enoki wallets:', err);
+							console.error(
+								`[SuiModule] Enoki config looks unusual: ${
+									typeof apiKey === 'string' && apiKey.length < 16 ? 'apiKey too short; ' : ''
+								}${
+									typeof googleId === 'string' && !googleId.endsWith('.apps.googleusercontent.com')
+										? 'googleClientId should typically end with .apps.googleusercontent.com; '
+										: ''
+								}please verify`
+							);
 						} catch {}
+						// Skip registering Enoki if suspicious
+					} else {
+						try {
+							registerEnokiWallets({
+								client: _clientCache[network],
+								network: network,
+								apiKey,
+								providers: {
+									google: { clientId: googleId }
+								}
+							});
+						} catch (err) {
+							try {
+								console.error('[SuiModule] Failed to register Enoki wallets:', err);
+							} catch {}
+						}
 					}
 				}
 			}
@@ -128,12 +133,21 @@
 		window.localStorage.removeItem(STORAGE_KEY);
 	};
 
+	const getConfiguredNetwork = () => {
+		try {
+			const net = _zkLoginGoogle?.network;
+			if (net === 'mainnet' || net === 'testnet' || net === 'devnet') return net;
+		} catch {}
+		return undefined;
+	};
+
 	const getDefaultChain = () => {
 		try {
 			const selected = getConnectionData()?.selectedChain;
 			if (typeof selected === 'string' && selected.startsWith('sui:')) return selected;
 		} catch {}
-		return 'sui:mainnet';
+		const cfg = getConfiguredNetwork();
+		return `sui:${cfg || 'mainnet'}`;
 	};
 
 	const isSuiAccount = (acc) =>
@@ -246,7 +260,7 @@
 		}
 
 		try {
-			const chainId = account.value?.chains?.[0] || 'sui:mainnet';
+			const chainId = account.value?.chains?.[0] || getDefaultChain();
 			const client = getSuiClient(chainId);
 			const activeAddr = account.value.address;
 			const names = await resolveAddressToSuiNSNames(client, activeAddr);
@@ -270,7 +284,7 @@
 	export const refreshSuiBalance = async (targetAddress, options = {}) => {
 		const owner = targetAddress ?? account.value?.address;
 		if (!owner) return null;
-		const chainId = account.value?.chains?.[0] || 'sui:mainnet';
+		const chainId = account.value?.chains?.[0] || getDefaultChain();
 		const key = `${owner}|${chainId}`;
 		const now = Date.now();
 		const lastFetchedAt = _balanceFetchedAtByKey[key] || 0;
@@ -327,7 +341,7 @@
 
 		try {
 			const activeAddr = account.value.address;
-			const activeChain = account.value?.chains?.[0] || 'sui:mainnet';
+			const activeChain = account.value?.chains?.[0] || getDefaultChain();
 			const activeClient = getSuiClient(activeChain);
 			const activeNames = await resolveAddressToSuiNSNames(activeClient, activeAddr);
 			_suiNames = Array.isArray(activeNames) ? activeNames : [];
@@ -565,8 +579,6 @@
 	export const connect = async (wallet) => {
 		walletAdapter = wallet?.adapter;
 		if (walletAdapter) {
-			console.log('connect', walletAdapter?.features);
-
 			status = ConnectionStatus.CONNECTING;
 			try {
 				// Prefer adapter.connect when available
@@ -823,6 +835,17 @@
 			typeof walletAdapter.signMessage === 'function' ||
 			typeof walletAdapter.signPersonalMessage === 'function'
 		);
+	};
+
+	const isSuspiciousEnokiConfig = (apiKey, googleId) => {
+		try {
+			const suspiciousApiKey = typeof apiKey === 'string' && apiKey.length < 16;
+			const suspiciousGoogleId =
+				typeof googleId === 'string' && !googleId.endsWith('.apps.googleusercontent.com');
+			return !!(suspiciousApiKey || suspiciousGoogleId);
+		} catch {
+			return false;
+		}
 	};
 
 	// zkLogin helpers (Enoki)
@@ -1098,7 +1121,10 @@
 		// Ensure Enoki wallets are registered before discovery so they appear in the modal
 		// Trigger client creation for mainnet, which invokes registerEnokiWallets with providers
 		try {
-			if (_zkLoginGoogle) getSuiClient('sui:mainnet');
+			if (_zkLoginGoogle) {
+				const cfg = getConfiguredNetwork() || 'mainnet';
+				getSuiClient(`sui:${cfg}`);
+			}
 		} catch {}
 
 		// Probe Enoki API key once to provide early feedback in console
@@ -1107,11 +1133,16 @@
 				_enokiProbeDone = true;
 				const apiKey = _zkLoginGoogle?.apiKey;
 				// Derive preferred network: use active chain if available
-				const chainId = account.value?.chains?.[0] || 'sui:mainnet';
-				const network = chainId?.split?.(':')?.[1] || 'mainnet';
-				setTimeout(() => {
-					probeEnokiApiKey(apiKey, network);
-				}, 0);
+				const configured = getConfiguredNetwork();
+				const chainId =
+					account.value?.chains?.[0] || (configured ? `sui:${configured}` : getDefaultChain());
+				const network = configured || chainId?.split?.(':')?.[1] || 'mainnet';
+				// Skip probing if config is suspicious
+				if (!isSuspiciousEnokiConfig(apiKey, _zkLoginGoogle?.googleClientId)) {
+					setTimeout(() => {
+						probeEnokiApiKey(apiKey, network);
+					}, 0);
+				}
 			}
 		} catch {}
 		// Remove previous listener if any

@@ -27,7 +27,7 @@
 		availableWallets
 	} from '$lib';
 	import { Transaction } from '@mysten/sui/transactions';
-	import { isZkLoginWallet, getZkLoginInfo } from '$lib';
+	import { getZkLoginInfo } from '$lib';
 
 	let transactionResult = $state(null);
 	let signatureResult = $state(null);
@@ -180,7 +180,8 @@
 
 	const zkLoginGoogle = {
 		apiKey: PUBLIC_ENOKI_API_KEY,
-		googleClientId: PUBLIC_GOOGLE_CLIENT_ID
+		googleClientId: PUBLIC_GOOGLE_CLIENT_ID,
+		network: 'testnet'
 	};
 </script>
 

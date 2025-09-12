@@ -13,7 +13,7 @@
 </script>
 
 <script>
-	let { availableWallets, onPickInstalled = undefined, zkLoginGoogle = false } = $props();
+	let { availableWallets, onPickInstalled = undefined, zkLoginGoogle = null } = $props();
 	let isOpen = $state(false);
 	let showOther = $state(false);
 
@@ -211,7 +211,11 @@
 										<div class="wallet-name">{getWalletDisplayName(wallet)}</div>
 									</div>
 									<div class="wallet-status">
-										{#if !zkLoginGoogle}
+										{#if wallet.name === 'Sign in with Google'}
+											{#if zkLoginGoogle.network !== 'mainnet'}
+												<span class="installed-badge">{zkLoginGoogle.network}</span>
+											{/if}
+										{:else}
 											<span class="installed-badge">Installed</span>
 										{/if}
 										<svg class="wallet-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
