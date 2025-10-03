@@ -54,8 +54,8 @@
 		const network = chainIdLike?.split?.(':')?.[1] || 'mainnet';
 		if (!_clientCache[network]) {
 			_clientCache[network] = new SuiClient({ url: getFullnodeUrl(network) });
-			// Register Enoki wallets only when zkLoginGoogle is enabled
-			if (_zkLoginGoogle) {
+			// Register Enoki wallets only when zkLoginGoogle is enabled and in browser environment
+			if (_zkLoginGoogle && isBrowser) {
 				const apiKey = _zkLoginGoogle?.apiKey;
 				const googleId = _zkLoginGoogle?.googleClientId;
 
@@ -133,6 +133,9 @@
 		window.localStorage.removeItem(STORAGE_KEY);
 	};
 
+	/**
+	 * @returns {import('./SuiModule.svelte').SuiNetwork | undefined}
+	 */
 	const getConfiguredNetwork = () => {
 		try {
 			const net = _zkLoginGoogle?.network;
@@ -142,12 +145,18 @@
 	};
 
 	const getDefaultChain = () => {
+		// Priority 1: zkLoginGoogle.network config (for consistency before/after connect)
+		const cfg = getConfiguredNetwork();
+		if (cfg) return `sui:${cfg}`;
+
+		// Priority 2: localStorage (previous session)
 		try {
 			const selected = getConnectionData()?.selectedChain;
 			if (typeof selected === 'string' && selected.startsWith('sui:')) return selected;
 		} catch {}
-		const cfg = getConfiguredNetwork();
-		return `sui:${cfg || 'mainnet'}`;
+
+		// Priority 3: fallback to mainnet
+		return 'sui:mainnet';
 	};
 
 	const isSuiAccount = (acc) =>
@@ -480,7 +489,19 @@
 
 	// Hook-style getter for SuiClient (use without .value)
 	export const useSuiClient = () => {
-		const chainId = account.value?.chains?.[0] || getDefaultChain();
+		// Priority: account chain > zkLoginGoogle config > localStorage > mainnet
+		let chainId;
+		if (account.value?.chains?.[0]) {
+			chainId = account.value.chains[0];
+		} else {
+			// Re-evaluate config every time to catch zkLoginGoogle updates
+			const cfg = getConfiguredNetwork();
+			if (cfg) {
+				chainId = `sui:${cfg}`;
+			} else {
+				chainId = getDefaultChain();
+			}
+		}
 		return getSuiClient(chainId);
 	};
 
@@ -621,7 +642,8 @@
 				account.setAccount(selectedAccount);
 				// Ensure account has a valid chain identifier
 				if (!Array.isArray(selectedAccount?.chains) || selectedAccount.chains.length === 0) {
-					setAccountChainsInPlace([getDefaultChain()]);
+					const defaultChain = getDefaultChain();
+					setAccountChainsInPlace([defaultChain]);
 				}
 				_wallet = wallet;
 				status = ConnectionStatus.CONNECTED;
@@ -894,11 +916,6 @@
 
 	const applyWalletConfig = (wallets, config) => {
 		const { customNames = {}, ordering = [] } = config;
-
-		// Debug: log wallet names để dễ config (uncomment when needed)
-		// if (isBrowser && wallets.length > 0) {
-		// 	console.log('🔍 Available wallet names for config:', wallets.map((w) => w.name));
-		// }
 
 		// Apply custom names
 		const walletsWithCustomNames = wallets.map((wallet) => {

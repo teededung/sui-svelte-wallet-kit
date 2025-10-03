@@ -38,6 +38,7 @@
 	import { Transaction } from '@mysten/sui/transactions';
 
 	let account = $derived(useCurrentAccount());
+	let suiClient = $derived(account ? useSuiClient() : null);
 
 	// State with type annotations
 	let transactionResult = $state<any>(null);
@@ -156,13 +157,17 @@
 			return;
 		}
 
+		if (!suiClient) {
+			error = 'Sui client not found';
+			return;
+		}
+
 		isLoadingObjects = true;
 		error = null;
 		ownedObjects = null;
 
 		try {
-			const client = useSuiClient();
-			const objects = await client.getOwnedObjects({
+			const objects = await suiClient.getOwnedObjects({
 				owner: account.address,
 				options: {
 					showType: true,

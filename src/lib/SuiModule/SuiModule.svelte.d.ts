@@ -61,12 +61,17 @@ export interface SwitchWalletOptions {
 }
 
 /**
+ * Sui network types
+ */
+export type SuiNetwork = 'mainnet' | 'testnet' | 'devnet';
+
+/**
  * zkLogin configuration for Google (Enoki)
  */
 export interface ZkLoginGoogleConfig {
   apiKey: string;
   googleClientId: string;
-  network?: 'mainnet' | 'testnet' | 'devnet';
+  network?: SuiNetwork;
 }
 
 /**
