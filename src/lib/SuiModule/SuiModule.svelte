@@ -474,12 +474,10 @@
 		}
 	};
 
-	// Expose SuiClient instance that matches the current account's chain
-	export const suiClient = {
-		get value() {
-			const chainId = account.value?.chains?.[0] || getDefaultChain();
-			return getSuiClient(chainId);
-		}
+	// Hook-style getter for SuiClient (use without .value)
+	export const useSuiClient = () => {
+		const chainId = account.value?.chains?.[0] || getDefaultChain();
+		return getSuiClient(chainId);
 	};
 
 	// Expose all accounts provided by the connected wallet, if supported

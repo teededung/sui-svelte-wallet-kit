@@ -23,7 +23,7 @@
 		refreshSuiBalance,
 		walletAdapters,
 		getZkLoginInfo,
-		suiClient
+		useSuiClient
 	} from '$lib';
 
 	// Import types for better TypeScript support
@@ -159,7 +159,7 @@
 		ownedObjects = null;
 
 		try {
-			const client = suiClient.value;
+			const client = useSuiClient();
 			const objects = await client.getOwnedObjects({
 				owner: account.value.address,
 				options: {
@@ -447,7 +447,7 @@
 		</div>
 
 		<div class="objects-section">
-			<h2>Owned Objects (using suiClient)</h2>
+			<h2>Owned Objects (using useSuiClient)</h2>
 			{#if account.value}
 				<button class="action-btn" onclick={fetchOwnedObjects} disabled={isLoadingObjects}>
 					{isLoadingObjects ? 'Loading Objects...' : 'Fetch Owned Objects (limit: 10)'}

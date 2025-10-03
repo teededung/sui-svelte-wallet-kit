@@ -279,9 +279,13 @@ export const suiNamesLoading: ReadableStore<boolean>;
 export const suiNamesByAddress: ReadableStore<Record<string, string[]>>;
 
 /**
- * SuiClient instance matching current account's chain (reactive store)
+ * Hook to get SuiClient instance for active chain (use without .value)
+ * @returns SuiClient instance matching current account's chain
+ * @example
+ * const client = useSuiClient();
+ * const balance = await client.getBalance({ owner: account.value.address });
  */
-export const suiClient: ReadableStore<SuiClient>;
+export function useSuiClient(): SuiClient;
 
 /**
  * SUI balance for active account in MIST (reactive store)

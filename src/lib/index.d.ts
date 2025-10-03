@@ -43,7 +43,7 @@ export {
   subscribeWalletDiscovery,
   setModuleWalletDiscovery,
   initWalletDiscovery,
-  suiClient
+  useSuiClient
 } from './SuiModule/index';
 
 export type {
