@@ -40,7 +40,8 @@ export {
   setSuiBalanceCacheTTL,
   subscribeWalletDiscovery,
   setModuleWalletDiscovery,
-  initWalletDiscovery
+  initWalletDiscovery,
+  suiClient
 } from './SuiModule/index';
 
 export type {
@@ -58,6 +59,7 @@ export type {
   AccountStore,
   SuiNamesStore,
   LastWalletSelectionStore,
-  SuiModuleProps
+  SuiModuleProps,
+  SuiClient
 } from './SuiModule/index';
 

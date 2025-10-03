@@ -33,5 +33,9 @@ export {
 	setAccountLabel,
 	walletAdapters,
 	availableWallets,
-	setSuiBalanceCacheTTL
+	setSuiBalanceCacheTTL,
+	subscribeWalletDiscovery,
+	setModuleWalletDiscovery,
+	initWalletDiscovery,
+	suiClient
 } from './SuiModule/index.js';

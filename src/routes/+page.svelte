@@ -22,7 +22,8 @@
 		suiBalanceLoading,
 		refreshSuiBalance,
 		walletAdapters,
-		getZkLoginInfo
+		getZkLoginInfo,
+		suiClient
 	} from '$lib';
 
 	// Import types for better TypeScript support
@@ -46,6 +47,8 @@
 	let message = $state<string>('Hello, Sui blockchain!');
 	let selectedAccountIndex = $state<number>(-1);
 	let zkInfo = $state<ZkLoginInfo | null>(null);
+	let ownedObjects = $state<any>(null);
+	let isLoadingObjects = $state<boolean>(false);
 	import { PUBLIC_GOOGLE_CLIENT_ID, PUBLIC_ENOKI_API_KEY } from '$env/static/public';
 
 	// Function with typed parameter and return type
@@ -143,6 +146,35 @@
 
 	const checkDetectedWallets = (): void => {
 		detectedAdapters = Array.isArray(walletAdapters) ? walletAdapters : [];
+	};
+
+	const fetchOwnedObjects = async (): Promise<void> => {
+		if (!account.value) {
+			error = 'Please connect your wallet first';
+			return;
+		}
+
+		isLoadingObjects = true;
+		error = null;
+		ownedObjects = null;
+
+		try {
+			const client = suiClient.value;
+			const objects = await client.getOwnedObjects({
+				owner: account.value.address,
+				options: {
+					showType: true,
+					showContent: true,
+					showDisplay: true
+				},
+				limit: 10
+			});
+			ownedObjects = objects;
+		} catch (err: any) {
+			error = err.message || 'Failed to fetch owned objects';
+		} finally {
+			isLoadingObjects = false;
+		}
 	};
 
 	// Use packaged switchWallet with callbacks for custom UX
@@ -414,6 +446,29 @@
 			{/if}
 		</div>
 
+		<div class="objects-section">
+			<h2>Owned Objects (using suiClient)</h2>
+			{#if account.value}
+				<button class="action-btn" onclick={fetchOwnedObjects} disabled={isLoadingObjects}>
+					{isLoadingObjects ? 'Loading Objects...' : 'Fetch Owned Objects (limit: 10)'}
+				</button>
+			{:else}
+				<p class="warning">Connect your wallet to fetch owned objects</p>
+			{/if}
+
+			{#if ownedObjects}
+				<div class="result">
+					<h4>Owned Objects Result:</h4>
+					<p><strong>Total Objects:</strong> {ownedObjects.data?.length || 0}</p>
+					{#if ownedObjects.data && ownedObjects.data.length > 0}
+						<pre>{JSON.stringify(ownedObjects, null, 2)}</pre>
+					{:else}
+						<p>No objects found for this address.</p>
+					{/if}
+				</div>
+			{/if}
+		</div>
+
 		<div class="actions-section">
 			<h2>Available Actions</h2>
 			<div class="action-buttons">
@@ -489,6 +544,7 @@
 	.wallet-section,
 	.transaction-section,
 	.message-section,
+	.objects-section,
 	.actions-section {
 		background: rgba(255, 255, 255, 0.06);
 		border: 1px solid rgba(255, 255, 255, 0.14);

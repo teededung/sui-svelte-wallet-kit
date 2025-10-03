@@ -1,5 +1,6 @@
 import { Component } from 'svelte';
 import type { Transaction } from '@mysten/sui/transactions';
+import type { SuiClient } from '@mysten/sui/client';
 import type { Snippet } from 'svelte';
 
 /**
@@ -276,6 +277,11 @@ export const suiNamesLoading: ReadableStore<boolean>;
  * SuiNS names by address map (reactive store)
  */
 export const suiNamesByAddress: ReadableStore<Record<string, string[]>>;
+
+/**
+ * SuiClient instance matching current account's chain (reactive store)
+ */
+export const suiClient: ReadableStore<SuiClient>;
 
 /**
  * SUI balance for active account in MIST (reactive store)
