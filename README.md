@@ -238,7 +238,7 @@ Examples:
 
 	// Use hooks for reactive state
 	let account = $derived(useCurrentAccount());
-	let suiClient = $derived(account ? useSuiClient() : null);
+	let suiClient = $derived(useSuiClient());
 
 	$effect(async () => {
 		if (account && isZkLoginWallet()) {

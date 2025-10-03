@@ -38,7 +38,7 @@
 	import { Transaction } from '@mysten/sui/transactions';
 
 	let account = $derived(useCurrentAccount());
-	let suiClient = $derived(account ? useSuiClient() : null);
+	let suiClient = $derived(useSuiClient());
 
 	// State with type annotations
 	let transactionResult = $state<any>(null);

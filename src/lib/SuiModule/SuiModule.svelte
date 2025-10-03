@@ -53,7 +53,8 @@
 	const getSuiClient = (chainIdLike) => {
 		const network = chainIdLike?.split?.(':')?.[1] || 'mainnet';
 		if (!_clientCache[network]) {
-			_clientCache[network] = new SuiClient({ url: getFullnodeUrl(network) });
+			_clientCache[network] = new SuiClient({ url: getFullnodeUrl(network), network });
+
 			// Register Enoki wallets only when zkLoginGoogle is enabled and in browser environment
 			if (_zkLoginGoogle && isBrowser) {
 				const apiKey = _zkLoginGoogle?.apiKey;
@@ -89,7 +90,7 @@
 						try {
 							registerEnokiWallets({
 								client: _clientCache[network],
-								network: network,
+								network,
 								apiKey,
 								providers: {
 									google: { clientId: googleId }
@@ -134,6 +135,7 @@
 	};
 
 	/**
+	 * Get configured network from zkLoginGoogle.network (only for zkLogin wallets)
 	 * @returns {import('./SuiModule.svelte').SuiNetwork | undefined}
 	 */
 	const getConfiguredNetwork = () => {
@@ -145,7 +147,7 @@
 	};
 
 	const getDefaultChain = () => {
-		// Priority 1: zkLoginGoogle.network config (for consistency before/after connect)
+		// Priority 1: zkLoginGoogle.network (for zkLogin wallet consistency before/after connect)
 		const cfg = getConfiguredNetwork();
 		if (cfg) return `sui:${cfg}`;
 
@@ -487,14 +489,14 @@
 		}
 	};
 
-	// Hook-style getter for SuiClient (use without .value)
 	export const useSuiClient = () => {
-		// Priority: account chain > zkLoginGoogle config > localStorage > mainnet
+		// Priority: wallet's active chain > zkLoginGoogle.network > localStorage > mainnet
 		let chainId;
 		if (account.value?.chains?.[0]) {
+			// Use chain from connected wallet (read from wallet extension)
 			chainId = account.value.chains[0];
 		} else {
-			// Re-evaluate config every time to catch zkLoginGoogle updates
+			// Fallback when not connected: use zkLogin config or localStorage or mainnet
 			const cfg = getConfiguredNetwork();
 			if (cfg) {
 				chainId = `sui:${cfg}`;
@@ -1253,7 +1255,7 @@
 	});
 
 	$effect(() => {
-		// Update internal walletConfig when prop changes
+		// Update internal config when props change
 		_walletConfig = walletConfig || {};
 		_zkLoginGoogle = zkLoginGoogle || null;
 		// Reset probe state to allow re-validation on prop change
