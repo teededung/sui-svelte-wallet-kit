@@ -430,6 +430,9 @@
 	// Hook-style getter for current account
 	export const useCurrentAccount = () => _account;
 
+	// Hook-style getter for all available accounts
+	export const useAccounts = () => (Array.isArray(_accountsSnapshot) ? _accountsSnapshot : []);
+
 	// Internal account management (not exported)
 	const account = {
 		get value() {
@@ -442,6 +445,7 @@
 			_account = undefined;
 		}
 	};
+
 	// Export account loading state
 	export const accountLoading = {
 		get value() {
@@ -505,19 +509,6 @@
 			}
 		}
 		return getSuiClient(chainId);
-	};
-
-	// Expose all accounts provided by the connected wallet, if supported
-	export const accounts = {
-		get value() {
-			return Array.isArray(_accountsSnapshot) ? _accountsSnapshot : [];
-		}
-	};
-
-	export const accountsCount = {
-		get value() {
-			return Array.isArray(_accountsSnapshot) ? _accountsSnapshot.length : 0;
-		}
 	};
 
 	export const activeAccountIndex = {

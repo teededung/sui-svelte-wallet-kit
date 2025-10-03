@@ -3,8 +3,7 @@
 		SuiModule,
 		ConnectButton,
 		useCurrentAccount,
-		accounts,
-		accountsCount,
+		useAccounts,
 		walletName,
 		walletIconUrl,
 		switchAccount,
@@ -38,6 +37,7 @@
 	import { Transaction } from '@mysten/sui/transactions';
 
 	let account = $derived(useCurrentAccount());
+	let accounts = $derived(useAccounts());
 	let suiClient = $derived(useSuiClient());
 
 	// State with type annotations
@@ -290,8 +290,8 @@
 					{/if}
 					<p><strong>Address:</strong> {account?.address || 'N/A'}</p>
 					<p><strong>Label:</strong> {account?.label || 'N/A'}</p>
-					<p><strong>Total Accounts:</strong> {accountsCount.value}</p>
-					{#if accountsCount.value > 1}
+					<p><strong>Total Accounts:</strong> {accounts.length}</p>
+					{#if accounts.length > 1}
 						<div class="account-switcher">
 							<label for="account-select"><strong>Switch account:</strong></label>
 							<select
@@ -300,7 +300,7 @@
 								onchange={onAccountChange}
 								class="account-select"
 							>
-								{#each accounts.value as acc, i}
+								{#each accounts as acc, i}
 									<option value={i} selected={i === activeAccountIndex.value}>
 										#{i + 1} —
 										{#if Array.isArray(suiNamesByAddress.value?.[acc.address]) && suiNamesByAddress.value[acc.address].length > 0}
@@ -313,10 +313,10 @@
 							</select>
 						</div>
 					{/if}
-					{#if accountsCount.value > 1}
+					{#if accounts.length > 1}
 						<p><strong>All Accounts:</strong></p>
 						<ul>
-							{#each accounts.value as acc, i}
+							{#each accounts as acc, i}
 								<li>
 									#{i + 1}: {acc.address}
 								</li>

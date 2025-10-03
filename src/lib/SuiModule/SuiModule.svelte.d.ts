@@ -155,7 +155,7 @@ export interface SuiModuleProps {
  * Hook to get current connected account (use without .value)
  * @returns Current account or undefined if not connected
  * @example
- * const account = useCurrentAccount();
+ * const account = $derived(useCurrentAccount());
  * if (account) {
  *   console.log(account.address);
  * }
@@ -163,19 +163,18 @@ export interface SuiModuleProps {
 export function useCurrentAccount(): SuiAccount | undefined;
 
 /**
+ * Hook to get all accounts from the connected wallet (use without .value)
+ * @returns Array of accounts or empty array if not connected
+ * @example
+ * const accounts = $derived(useAccounts());
+ * accounts.forEach((account) => console.log(account.address));
+ */
+export function useAccounts(): SuiAccount[];
+
+/**
  * Account loading state (reactive store)
  */
 export const accountLoading: ReadableStore<boolean>;
-
-/**
- * All accounts from connected wallet (reactive store)
- */
-export const accounts: ReadableStore<SuiAccount[]>;
-
-/**
- * Number of accounts (reactive store)
- */
-export const accountsCount: ReadableStore<number>;
 
 /**
  * Index of active account in accounts array (reactive store)
@@ -293,7 +292,7 @@ export const suiNamesByAddress: ReadableStore<Record<string, string[]>>;
  * Hook to get SuiClient instance for active chain (use without .value)
  * @returns SuiClient instance matching current account's chain
  * @example
- * const client = useSuiClient();
+ * const client = $derived(useSuiClient());
  * const balance = await client.getBalance({ owner: account.value.address });
  */
 export function useSuiClient(): SuiClient;

@@ -207,7 +207,7 @@ Exports from `sui-svelte-wallet-kit`:
 - Connection: `connectWithModal(onSelection?)`, `getConnectModal`, `connect(wallet)`, `disconnect`, `switchWallet(options?)`
 - Signing: `signAndExecuteTransaction(transaction)`, `signMessage(message)`, `canSignMessage()`
 - Wallet info: `wallet`, `walletName`, `walletIconUrl`, `lastWalletSelection`
-- Accounts: `useCurrentAccount()`, `accounts`, `accountsCount`, `activeAccountIndex`, `switchAccount(selector)`, `setAccountLabel(name)`, `accountLoading`
+- Accounts: `useCurrentAccount()`, `useAccounts()`, `activeAccountIndex`, `switchAccount(selector)`, `setAccountLabel(name)`, `accountLoading`
 - SuiNS: `suiNames`, `suiNamesLoading`, `suiNamesByAddress`
 - Balance: `suiBalance`, `suiBalanceLoading`, `suiBalanceByAddress`, `refreshSuiBalance(address?, { force?: boolean })`
 - SuiClient: `useSuiClient()`
@@ -565,7 +565,7 @@ Show account info, SuiNS, balance, and refresh balance:
 <script>
 	import {
 		useCurrentAccount,
-		accountsCount,
+		useAccounts,
 		suiNames,
 		suiNamesLoading,
 		suiBalance,

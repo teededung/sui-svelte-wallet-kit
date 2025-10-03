@@ -4,9 +4,8 @@ export { ConnectModal } from './ConnectModal/index.js';
 export {
 	SuiModule,
 	useCurrentAccount,
+	useAccounts,
 	accountLoading,
-	accounts,
-	accountsCount,
 	activeAccountIndex,
 	switchAccount,
 	wallet,

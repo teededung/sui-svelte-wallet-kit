@@ -10,9 +10,8 @@ export type { SuiClient } from '@mysten/sui/client';
 export {
   SuiModule,
   useCurrentAccount,
+  useAccounts,
   accountLoading,
-  accounts,
-  accountsCount,
   activeAccountIndex,
   switchAccount,
   wallet,
