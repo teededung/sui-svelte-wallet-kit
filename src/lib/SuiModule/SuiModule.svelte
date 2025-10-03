@@ -416,7 +416,11 @@
 		setAccountLabelInPlace(name);
 	};
 
-	export const account = {
+	// Hook-style getter for current account
+	export const useCurrentAccount = () => _account;
+
+	// Internal account management (not exported)
+	const account = {
 		get value() {
 			return _account;
 		},

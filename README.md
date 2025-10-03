@@ -113,7 +113,7 @@ Props:
 - `style?: string`
 - `onWalletSelection?: (payload: { wallet: any; installed: boolean; connected: boolean; alreadyConnected?: boolean }) => void`
 
-Behavior: toggles between Connect and Disconnect based on `account.value`. When not connected, clicking the button opens the modal and invokes `onWalletSelection` with a payload describing the user selection so you can show a toast if the selected wallet is not installed.
+Behavior: toggles between Connect and Disconnect based on connection state. When not connected, clicking the button opens the modal and invokes `onWalletSelection` with a payload describing the user selection so you can show a toast if the selected wallet is not installed.
 
 #### ConnectModal
 
@@ -207,9 +207,10 @@ Exports from `sui-svelte-wallet-kit`:
 - Connection: `connectWithModal(onSelection?)`, `getConnectModal`, `connect(wallet)`, `disconnect`, `switchWallet(options?)`
 - Signing: `signAndExecuteTransaction(transaction)`, `signMessage(message)`, `canSignMessage()`
 - Wallet info: `wallet`, `walletName`, `walletIconUrl`, `lastWalletSelection`
-- Accounts: `account`, `accounts`, `accountsCount`, `activeAccountIndex`, `switchAccount(selector)`, `setAccountLabel(name)`, `accountLoading`
+- Accounts: `useCurrentAccount()`, `accounts`, `accountsCount`, `activeAccountIndex`, `switchAccount(selector)`, `setAccountLabel(name)`, `accountLoading`
 - SuiNS: `suiNames`, `suiNamesLoading`, `suiNamesByAddress`
 - Balance: `suiBalance`, `suiBalanceLoading`, `suiBalanceByAddress`, `refreshSuiBalance(address?, { force?: boolean })`
+- SuiClient: `useSuiClient()`
 - Discovery: `walletAdapters`, `availableWallets`
 - Enoki/zkLogin: `isZkLoginWallet()`, `getZkLoginInfo()`
 
@@ -218,7 +219,8 @@ Examples:
 ```svelte
 <script>
 	import {
-		account,
+		useCurrentAccount,
+		useSuiClient,
 		accountLoading,
 		connectWithModal,
 		switchWallet,
@@ -234,8 +236,12 @@ Examples:
 	} from 'sui-svelte-wallet-kit';
 	import { Transaction } from '@mysten/sui/transactions';
 
+	// Use hooks for reactive state
+	let account = $derived(useCurrentAccount());
+	let client = $derived(useSuiClient());
+
 	$effect(async () => {
-		if (account.value && isZkLoginWallet()) {
+		if (account && isZkLoginWallet()) {
 			const info = await getZkLoginInfo();
 			console.log('zkLogin session/metadata:', info);
 		}
@@ -340,22 +346,29 @@ All reactive stores and functions are fully typed:
 ```svelte
 <script lang="ts">
 	import {
-		account,
+		useCurrentAccount,
+		useSuiClient,
 		wallet,
 		suiBalance,
 		switchAccount,
 		signMessage,
 		refreshSuiBalance
 	} from 'sui-svelte-wallet-kit';
-	import type { SuiAccount, SuiWallet, SignMessageResult } from 'sui-svelte-wallet-kit';
+	import type { SuiAccount, SuiWallet, SignMessageResult, SuiClient } from 'sui-svelte-wallet-kit';
+
+	// Use hooks for reactive state
+	let account = $derived(useCurrentAccount());
+	let client = $derived(useSuiClient());
 
 	// Reactive stores are type-safe
 	$effect(() => {
-		const currentAccount: SuiAccount | undefined = account.value;
+		const currentAccount: SuiAccount | undefined = account;
+		const currentClient: SuiClient = client;
 		const currentWallet: SuiWallet | undefined = wallet.value;
 		const balance: string | null = suiBalance.value;
 
 		console.log('Account:', currentAccount?.address);
+		console.log('Client network:', currentClient);
 		console.log('Wallet:', currentWallet?.name);
 		console.log('Balance:', balance);
 	});
@@ -381,6 +394,15 @@ All reactive stores and functions are fully typed:
 			ttlMs: 5000
 		});
 		console.log('Refreshed balance:', balance);
+	};
+
+	// Use SuiClient for queries
+	const fetchBalance = async (): Promise<void> => {
+		if (!account) return;
+		const balance = await client.getBalance({
+			owner: account.address
+		});
+		console.log('Balance:', balance);
 	};
 </script>
 ```
@@ -542,7 +564,7 @@ Show account info, SuiNS, balance, and refresh balance:
 ```svelte
 <script>
 	import {
-		account,
+		useCurrentAccount,
 		accountsCount,
 		suiNames,
 		suiNamesLoading,
@@ -550,6 +572,8 @@ Show account info, SuiNS, balance, and refresh balance:
 		suiBalanceLoading,
 		refreshSuiBalance
 	} from 'sui-svelte-wallet-kit';
+
+	let account = $derived(useCurrentAccount());
 
 	const formatSui = (balance) => {
 		try {
@@ -564,9 +588,9 @@ Show account info, SuiNS, balance, and refresh balance:
 	};
 </script>
 
-{#if account.value}
-	<p><strong>Address:</strong> {account.value.address}</p>
-	<p><strong>Chains:</strong> {account.value.chains?.join(', ') || 'N/A'}</p>
+{#if account}
+	<p><strong>Address:</strong> {account.address}</p>
+	<p><strong>Chains:</strong> {account.chains?.join(', ') || 'N/A'}</p>
 	{#if suiNamesLoading.value}
 		<p><strong>SuiNS Names:</strong> Loading...</p>
 	{:else}
@@ -586,8 +610,8 @@ Show account info, SuiNS, balance, and refresh balance:
 		{/if}
 	</p>
 	<button
-		onclick={() => refreshSuiBalance(account.value.address)}
-		disabled={!account.value || suiBalanceLoading.value}
+		onclick={() => refreshSuiBalance(account.address)}
+		disabled={!account || suiBalanceLoading.value}
 	>
 		Refresh Balance
 	</button>
@@ -598,15 +622,16 @@ Sign and execute a simple transaction:
 
 ```svelte
 <script>
-	import { signAndExecuteTransaction, account } from 'sui-svelte-wallet-kit';
+	import { signAndExecuteTransaction, useCurrentAccount } from 'sui-svelte-wallet-kit';
 	import { Transaction } from '@mysten/sui/transactions';
 
+	let account = $derived(useCurrentAccount());
 	let isLoading = false;
 	let transactionResult = null;
 	let error = null;
 
 	const testTransaction = async () => {
-		if (!account.value) {
+		if (!account) {
 			error = 'Please connect your wallet first';
 			return;
 		}
@@ -616,7 +641,7 @@ Sign and execute a simple transaction:
 		try {
 			const tx = new Transaction();
 			// Example: transfer 0 SUI to self (no-op); replace with your own commands
-			tx.transferObjects([tx.splitCoins(tx.gas, [0])], account.value.address);
+			tx.transferObjects([tx.splitCoins(tx.gas, [0])], account.address);
 			transactionResult = await signAndExecuteTransaction(tx);
 		} catch (err) {
 			error = err?.message || 'Transaction failed';
@@ -641,14 +666,16 @@ Sign a message (works with wallets supporting `sui:signMessage` or Enoki `sui:si
 
 ```svelte
 <script>
-	import { canSignMessage, signMessage, account } from 'sui-svelte-wallet-kit';
+	import { canSignMessage, signMessage, useCurrentAccount } from 'sui-svelte-wallet-kit';
+
+	let account = $derived(useCurrentAccount());
 	let message = 'Hello, Sui blockchain!';
 	let signatureResult = null;
 	let isSigningMessage = false;
 	let error = null;
 
 	const testSignMessage = async () => {
-		if (!account.value) {
+		if (!account) {
 			error = 'Please connect your wallet first';
 			return;
 		}
@@ -665,7 +692,7 @@ Sign a message (works with wallets supporting `sui:signMessage` or Enoki `sui:si
 	};
 </script>
 
-{#if account.value}
+{#if account}
 	{#if canSignMessage()}
 		<input bind:value={message} placeholder="Enter message to sign" />
 		<button onclick={testSignMessage} disabled={isSigningMessage}>
@@ -687,10 +714,13 @@ Show zkLogin (Enoki) session/metadata when connected via Google:
 
 ```svelte
 <script>
-	import { getZkLoginInfo, account } from 'sui-svelte-wallet-kit';
+	import { getZkLoginInfo, useCurrentAccount } from 'sui-svelte-wallet-kit';
+
+	let account = $derived(useCurrentAccount());
 	let zkInfo = null;
+
 	$effect(async () => {
-		zkInfo = account.value ? await getZkLoginInfo() : null;
+		zkInfo = account ? await getZkLoginInfo() : null;
 	});
 </script>
 

@@ -147,9 +147,15 @@ export interface SuiModuleProps {
 }
 
 /**
- * Current connected account (reactive store)
+ * Hook to get current connected account (use without .value)
+ * @returns Current account or undefined if not connected
+ * @example
+ * const account = useCurrentAccount();
+ * if (account) {
+ *   console.log(account.address);
+ * }
  */
-export const account: AccountStore;
+export function useCurrentAccount(): SuiAccount | undefined;
 
 /**
  * Account loading state (reactive store)

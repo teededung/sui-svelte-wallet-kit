@@ -2,7 +2,7 @@
 	import {
 		SuiModule,
 		ConnectButton,
-		account,
+		useCurrentAccount,
 		accounts,
 		accountsCount,
 		walletName,
@@ -36,6 +36,8 @@
 	} from '$lib';
 
 	import { Transaction } from '@mysten/sui/transactions';
+
+	let account = $derived(useCurrentAccount());
 
 	// State with type annotations
 	let transactionResult = $state<any>(null);
@@ -75,7 +77,7 @@
 	};
 
 	const testTransaction = async (): Promise<void> => {
-		if (!account.value) {
+		if (!account) {
 			error = 'Please connect your wallet first';
 			return;
 		}
@@ -87,7 +89,7 @@
 		try {
 			// Create a simple test transaction (transfer 0 SUI to self)
 			const tx = new Transaction();
-			tx.transferObjects([tx.splitCoins(tx.gas, [0])], account.value.address);
+			tx.transferObjects([tx.splitCoins(tx.gas, [0])], account.address);
 
 			const result = await signAndExecuteTransaction(tx);
 			transactionResult = result;
@@ -99,7 +101,7 @@
 	};
 
 	const testSignMessage = async (): Promise<void> => {
-		if (!account.value) {
+		if (!account) {
 			error = 'Please connect your wallet first';
 			return;
 		}
@@ -131,7 +133,7 @@
 
 	$effect(() => {
 		// Fetch zkLogin info when account changes
-		if (account.value) {
+		if (account) {
 			getZkLoginInfo()
 				.then((info: ZkLoginInfo | null) => {
 					zkInfo = info;
@@ -149,7 +151,7 @@
 	};
 
 	const fetchOwnedObjects = async (): Promise<void> => {
-		if (!account.value) {
+		if (!account) {
 			error = 'Please connect your wallet first';
 			return;
 		}
@@ -161,7 +163,7 @@
 		try {
 			const client = useSuiClient();
 			const objects = await client.getOwnedObjects({
-				owner: account.value.address,
+				owner: account.address,
 				options: {
 					showType: true,
 					showContent: true,
@@ -259,13 +261,13 @@
 		<div class="wallet-section">
 			<h2>Wallet Connection</h2>
 			<ConnectButton class="connect-btn" {onWalletSelection} />
-			{#if account.value}
+			{#if account}
 				<button class="action-btn" style="margin-left: 0.75rem;" onclick={onSwitchWallet}>
 					Switch Wallet
 				</button>
 			{/if}
 
-			{#if account.value}
+			{#if account}
 				<div class="account-info">
 					<h3>Connected Account</h3>
 					{#if walletName.value}
@@ -281,8 +283,8 @@
 							/>
 						</p>
 					{/if}
-					<p><strong>Address:</strong> {account.value.address || 'N/A'}</p>
-					<p><strong>Label:</strong> {account.value.label || 'N/A'}</p>
+					<p><strong>Address:</strong> {account?.address || 'N/A'}</p>
+					<p><strong>Label:</strong> {account?.label || 'N/A'}</p>
 					<p><strong>Total Accounts:</strong> {accountsCount.value}</p>
 					{#if accountsCount.value > 1}
 						<div class="account-switcher">
@@ -326,7 +328,7 @@
 								: 'N/A'}
 						</p>
 					{/if}
-					<p><strong>Chains:</strong> {account.value.chains?.join(', ') || 'N/A'}</p>
+					<p><strong>Chains:</strong> {account?.chains?.join(', ') || 'N/A'}</p>
 					{#if zkInfo}
 						<div class="zklogin-box">
 							<strong>zkLogin (Enoki)</strong>
@@ -343,7 +345,8 @@
 					{/if}
 				</div>
 			{/if}
-			{#if account.value}
+			{#if account}
+				{@const account = useCurrentAccount()}
 				<div class="balance-box">
 					<h3>SUI Balance</h3>
 
@@ -357,10 +360,9 @@
 					<button
 						class="action-btn"
 						onclick={() => {
-							const addr = account.value?.address;
-							if (addr) refreshSuiBalance(addr);
+							if (account) refreshSuiBalance(account.address);
 						}}
-						disabled={!account.value || suiBalanceLoading.value}
+						disabled={!account || suiBalanceLoading.value}
 					>
 						Refresh Balance
 					</button>
@@ -370,7 +372,7 @@
 
 		<div class="transaction-section">
 			<h2>Transaction Testing</h2>
-			{#if account.value}
+			{#if account}
 				<button class="test-btn" onclick={testTransaction} disabled={isLoading}>
 					{isLoading ? 'Signing Transaction...' : 'Test Transaction (0 SUI transfer)'}
 				</button>
@@ -395,7 +397,7 @@
 
 		<div class="message-section">
 			<h2>Message Signing</h2>
-			{#if account.value}
+			{#if account}
 				{#if canSignMessage()}
 					<div class="message-input">
 						<label for="message">Message to sign:</label>
@@ -447,8 +449,8 @@
 		</div>
 
 		<div class="objects-section">
-			<h2>Owned Objects (using useSuiClient)</h2>
-			{#if account.value}
+			<h2>Owned Objects (using hooks: useCurrentAccount & useSuiClient)</h2>
+			{#if account}
 				<button class="action-btn" onclick={fetchOwnedObjects} disabled={isLoadingObjects}>
 					{isLoadingObjects ? 'Loading Objects...' : 'Fetch Owned Objects (limit: 10)'}
 				</button>
@@ -472,13 +474,12 @@
 		<div class="actions-section">
 			<h2>Available Actions</h2>
 			<div class="action-buttons">
-				{#if !account.value}
+				{#if !account}
 					<button class="action-btn" onclick={() => connectWithModal(onWalletSelection)}>
 						Connect with Modal
 					</button>
 				{/if}
-				<button class="action-btn" onclick={disconnect} disabled={!account.value}>Disconnect</button
-				>
+				<button class="action-btn" onclick={disconnect} disabled={!account}>Disconnect</button>
 				<button class="action-btn" onclick={checkDetectedWallets}>Check Detected Wallets</button>
 			</div>
 
