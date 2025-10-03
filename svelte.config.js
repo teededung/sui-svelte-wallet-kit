@@ -9,10 +9,6 @@ const config = {
 		adapter: adapter(),
 		csrf: {
 			trustedOrigins: ['*']
-		},
-		alias: {
-			$lib: './src/lib',
-			$routes: './src/routes'
 		}
 	},
 	vitePlugin: {

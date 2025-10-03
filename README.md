@@ -273,7 +273,205 @@ Built on `@suiet/wallet-sdk` and Wallet Radar. Detects popular Sui wallets such 
 
 ### TypeScript
 
-All exports are typed. You can use them in TS Svelte files directly.
+The package includes full TypeScript support with comprehensive type definitions for all components, utilities, and reactive stores.
+
+#### Using Types in Your Project
+
+Import types directly from the package:
+
+```typescript
+import type {
+	SuiAccount,
+	SuiWallet,
+	WalletConfig,
+	ZkLoginGoogleConfig,
+	SignMessageResult,
+	WalletSelectionPayload,
+	ConnectionResult,
+	SwitchWalletOptions
+} from 'sui-svelte-wallet-kit';
+```
+
+#### Type-safe Component Usage
+
+```svelte
+<script lang="ts">
+	import { SuiModule, ConnectButton } from 'sui-svelte-wallet-kit';
+	import type {
+		WalletConfig,
+		ZkLoginGoogleConfig,
+		WalletSelectionPayload
+	} from 'sui-svelte-wallet-kit';
+
+	// Type-safe configuration
+	const walletConfig: WalletConfig = {
+		ordering: ['Slush — A Sui wallet', 'OKX Wallet'],
+		customNames: {
+			'Slush — A Sui wallet': 'Slush'
+		}
+	};
+
+	const zkLoginGoogle: ZkLoginGoogleConfig = {
+		apiKey: 'your-api-key',
+		googleClientId: 'your-client-id.apps.googleusercontent.com',
+		network: 'testnet'
+	};
+
+	// Type-safe callback
+	const onWalletSelection = (payload: WalletSelectionPayload): void => {
+		console.log('Selected:', payload.wallet.name);
+		console.log('Installed:', payload.installed);
+	};
+
+	const onConnect = (): void => {
+		console.log('Connected!');
+	};
+</script>
+
+<SuiModule {walletConfig} {zkLoginGoogle} {onConnect} autoConnect={true}>
+	<ConnectButton {onWalletSelection} />
+</SuiModule>
+```
+
+#### Type-safe State and Functions
+
+All reactive stores and functions are fully typed:
+
+```svelte
+<script lang="ts">
+	import {
+		account,
+		wallet,
+		suiBalance,
+		switchAccount,
+		signMessage,
+		refreshSuiBalance
+	} from 'sui-svelte-wallet-kit';
+	import type { SuiAccount, SuiWallet, SignMessageResult } from 'sui-svelte-wallet-kit';
+
+	// Reactive stores are type-safe
+	$effect(() => {
+		const currentAccount: SuiAccount | undefined = account.value;
+		const currentWallet: SuiWallet | undefined = wallet.value;
+		const balance: string | null = suiBalance.value;
+
+		console.log('Account:', currentAccount?.address);
+		console.log('Wallet:', currentWallet?.name);
+		console.log('Balance:', balance);
+	});
+
+	// Type-safe function calls
+	const handleSwitchAccount = (index: number): boolean => {
+		return switchAccount(index);
+	};
+
+	const handleSignMessage = async (message: string): Promise<void> => {
+		try {
+			const result: SignMessageResult = await signMessage(message);
+			console.log('Signature:', result.signature);
+			console.log('Message bytes:', result.messageBytes);
+		} catch (error) {
+			console.error('Signing failed:', error);
+		}
+	};
+
+	const handleRefreshBalance = async (address: string): Promise<void> => {
+		const balance: string | null = await refreshSuiBalance(address, {
+			force: true,
+			ttlMs: 5000
+		});
+		console.log('Refreshed balance:', balance);
+	};
+</script>
+```
+
+#### Type-safe Wallet Switching
+
+```svelte
+<script lang="ts">
+	import { switchWallet, walletName } from 'sui-svelte-wallet-kit';
+	import type { SwitchWalletOptions, ConnectionResult, SuiWallet } from 'sui-svelte-wallet-kit';
+
+	const handleSwitchWallet = async (): Promise<void> => {
+		const options: SwitchWalletOptions = {
+			onSelection: ({ wallet, installed }) => {
+				console.log('Selected:', wallet.name, 'Installed:', installed);
+			},
+			shouldConnect: ({ selectedWallet, currentWallet }) => {
+				// Skip if selecting same wallet
+				return selectedWallet?.name !== currentWallet?.name;
+			},
+			onBeforeDisconnect: (current, selected) => {
+				console.log('Switching from', current?.name, 'to', selected?.name);
+			},
+			onConnected: (wallet) => {
+				console.log('Connected to:', wallet?.name);
+			},
+			onCancel: () => {
+				console.log('Switch cancelled');
+			}
+		};
+
+		const result: ConnectionResult = await switchWallet(options);
+
+		if (result.connected) {
+			console.log('Successfully switched to:', result.wallet?.name);
+		} else if (result.cancelled) {
+			console.log('User cancelled the switch');
+		}
+	};
+</script>
+```
+
+#### Available Types
+
+**Core Types:**
+
+- `SuiAccount` - Account information with address, chains, label
+- `SuiWallet` - Wallet information with name, icon, adapter
+- `WalletConfig` - Configuration for wallet ordering and custom names
+- `ZkLoginGoogleConfig` - Configuration for Enoki zkLogin with Google
+- `ZkLoginInfo` - zkLogin session and metadata
+
+**Result Types:**
+
+- `SignMessageResult` - Message signature result with signature and messageBytes
+- `ConnectionResult` - Connection/switch result with wallet info and status
+- `WalletSelectionPayload` - Wallet selection payload with wallet and installed status
+
+**Options Types:**
+
+- `SwitchWalletOptions` - Options for `switchWallet()` with callbacks
+- `RefreshBalanceOptions` - Options for `refreshSuiBalance()` with force and TTL
+
+**Store Types:**
+
+- `ReadableStore<T>` - Base reactive store with `value` getter
+- `AccountStore` - Account store with setAccount/removeAccount methods
+- `SuiNamesStore` - SuiNS names store with clear method
+- `LastWalletSelectionStore` - Last selection store with clear method
+
+#### IntelliSense Benefits
+
+With TypeScript enabled, you get:
+
+- ✅ **Autocomplete** for all props, functions, and store properties
+- ✅ **Type checking** catches errors at compile time
+- ✅ **Inline documentation** via hover tooltips
+- ✅ **Refactoring support** with safe renames across your codebase
+
+#### Configuration
+
+Ensure your `tsconfig.json` includes:
+
+```json
+{
+	"compilerOptions": {
+		"moduleResolution": "bundler",
+		"strict": true
+	}
+}
+```
 
 ### Development
 

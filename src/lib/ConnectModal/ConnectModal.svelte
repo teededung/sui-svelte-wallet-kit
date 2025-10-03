@@ -1,27 +1,40 @@
-<script module>
-	let _resolve = $state();
+<script module lang="ts">
+	import type { SuiWallet, ZkLoginGoogleConfig } from '../SuiModule/SuiModule.svelte';
+
+	interface NotInstalledSelection {
+		wallet: SuiWallet;
+		installUrl: string;
+	}
+
+	let _resolve = $state<((value: any) => void) | undefined>();
 	let resolve = {
 		get value() {
 			return _resolve;
 		},
-		set(value) {
+		set(value: ((val: any) => void) | undefined) {
 			_resolve = value;
 		}
 	};
-	let connectModal = $state();
-	let getConnectModal = () => connectModal;
+	let connectModal = $state<HTMLDialogElement>();
+	let getConnectModal = (): HTMLDialogElement | undefined => connectModal;
 </script>
 
-<script>
-	let { availableWallets, onPickInstalled = undefined, zkLoginGoogle = null } = $props();
-	let isOpen = $state(false);
-	let showOther = $state(false);
+<script lang="ts">
+	interface Props {
+		availableWallets: SuiWallet[];
+		onPickInstalled?: (wallet: SuiWallet) => void;
+		zkLoginGoogle?: ZkLoginGoogleConfig | null;
+	}
+
+	let { availableWallets, onPickInstalled = undefined, zkLoginGoogle = null }: Props = $props();
+	let isOpen = $state<boolean>(false);
+	let showOther = $state<boolean>(false);
 
 	// Show install hint when clicking a wallet that is not installed
-	let notInstalledSelection = $state();
-	let installHintEl = $state();
+	let notInstalledSelection = $state<NotInstalledSelection | undefined>();
+	let installHintEl = $state<HTMLDivElement | undefined>();
 
-	const getInstallUrlForWallet = (wallet) => {
+	const getInstallUrlForWallet = (wallet: SuiWallet): string => {
 		console.log('getInstallUrlForWallet', wallet);
 		try {
 			const urls = wallet?.downloadUrl;
@@ -32,10 +45,10 @@
 					const first = Object.values(urls).find(
 						(u) => typeof u === 'string' && /^https?:\/\//.test(u)
 					);
-					if (first) return first;
+					if (typeof first === 'string') return first;
 				}
 			}
-			const candidates = [
+			const candidates: (string | undefined)[] = [
 				wallet?.installUrl,
 				wallet?.downloadUrl,
 				wallet?.website,
@@ -52,13 +65,14 @@
 		}
 	};
 
-	const getWalletDisplayName = (wallet) => wallet?.displayName || wallet?.name || '';
+	const getWalletDisplayName = (wallet: SuiWallet): string =>
+		wallet?.displayName || wallet?.name || '';
 
-	const detectedWallets = $derived(
+	const detectedWallets = $derived<SuiWallet[]>(
 		Array.isArray(availableWallets) ? availableWallets.filter((w) => w?.installed) : []
 	);
 
-	const otherWallets = $derived(
+	const otherWallets = $derived<SuiWallet[]>(
 		Array.isArray(availableWallets) ? availableWallets.filter((w) => !w?.installed) : []
 	);
 
@@ -76,7 +90,9 @@
 		}
 	});
 
-	export const openAndWaitForResponse = () => {
+	export const openAndWaitForResponse = (): Promise<
+		{ wallet: SuiWallet; installed: boolean; started?: boolean } | undefined
+	> => {
 		return new Promise((res) => {
 			// Use showModal to guarantee top-layer rendering
 			if (connectModal && !connectModal.open) {
@@ -88,7 +104,7 @@
 		});
 	};
 
-	const onClose = () => {
+	const onClose = (): void => {
 		if (resolve.value) {
 			resolve.value(undefined);
 		}
@@ -96,7 +112,7 @@
 		notInstalledSelection = undefined;
 	};
 
-	const onSelected = (wallet) => {
+	const onSelected = (wallet: SuiWallet): void => {
 		// Keep modal open for not installed to allow user to pick another wallet
 		if (wallet?.installed) {
 			notInstalledSelection = undefined;
@@ -125,14 +141,14 @@
 		}
 	};
 
-	const onOverlayClick = (event) => {
+	const onOverlayClick = (event: MouseEvent): void => {
 		// Close only when clicking directly on the overlay (outside modal content)
 		if (event.target === event.currentTarget) {
 			onClose();
 		}
 	};
 
-	const onOverlayKeydown = (event) => {
+	const onOverlayKeydown = (event: KeyboardEvent): void => {
 		// Close when overlay is focused and user presses Enter or Space
 		if (event.key === 'Enter' || event.key === ' ') {
 			event.preventDefault();
@@ -211,7 +227,7 @@
 										<div class="wallet-name">{getWalletDisplayName(wallet)}</div>
 									</div>
 									<div class="wallet-status">
-										{#if wallet.name === 'Sign in with Google'}
+										{#if wallet.name === 'Sign in with Google' && zkLoginGoogle}
 											{#if zkLoginGoogle.network !== 'mainnet'}
 												<span class="installed-badge">{zkLoginGoogle.network}</span>
 											{/if}

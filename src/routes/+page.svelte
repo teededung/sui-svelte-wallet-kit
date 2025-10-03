@@ -1,12 +1,10 @@
-<script>
+<script lang="ts">
 	import {
 		SuiModule,
 		ConnectButton,
 		account,
 		accounts,
 		accountsCount,
-		accountLoading,
-		wallet,
 		walletName,
 		walletIconUrl,
 		switchAccount,
@@ -24,25 +22,36 @@
 		suiBalanceLoading,
 		refreshSuiBalance,
 		walletAdapters,
-		availableWallets
+		getZkLoginInfo
 	} from '$lib';
-	import { Transaction } from '@mysten/sui/transactions';
-	import { getZkLoginInfo } from '$lib';
 
-	let transactionResult = $state(null);
-	let signatureResult = $state(null);
-	let isLoading = $state(false);
-	let isSigningMessage = $state(false);
-	let error = $state(null);
-	let detectedAdapters = $state([]);
-	let message = $state('Hello, Sui blockchain!');
-	let selectedAccountIndex = $state(-1);
-	let zkInfo = $state(null);
+	// Import types for better TypeScript support
+	import type {
+		WalletConfig,
+		ZkLoginGoogleConfig,
+		ZkLoginInfo,
+		SignMessageResult,
+		WalletSelectionPayload
+	} from '$lib';
+
+	import { Transaction } from '@mysten/sui/transactions';
+
+	// State with type annotations
+	let transactionResult = $state<any>(null);
+	let signatureResult = $state<SignMessageResult | null>(null);
+	let isLoading = $state<boolean>(false);
+	let isSigningMessage = $state<boolean>(false);
+	let error = $state<string | null>(null);
+	let detectedAdapters = $state<any[]>([]);
+	let message = $state<string>('Hello, Sui blockchain!');
+	let selectedAccountIndex = $state<number>(-1);
+	let zkInfo = $state<ZkLoginInfo | null>(null);
 	import { PUBLIC_GOOGLE_CLIENT_ID, PUBLIC_ENOKI_API_KEY } from '$env/static/public';
 
-	const formatSui = (balance) => {
+	// Function with typed parameter and return type
+	const formatSui = (balance: string | null | undefined): string => {
 		try {
-			const n = BigInt(balance);
+			const n = BigInt(balance ?? '0');
 			const whole = n / 1000000000n;
 			const frac = n % 1000000000n;
 			const fracStr = frac.toString().padStart(9, '0').replace(/0+$/, '');
@@ -52,17 +61,17 @@
 		}
 	};
 
-	const onAccountChange = async () => {
+	const onAccountChange = async (): Promise<void> => {
 		switchAccount(Number(selectedAccountIndex));
 	};
 
 	// Whitelist wallets that support native account picker when re-selecting the same wallet
-	const supportsAccountPicker = (walletNameStr) => {
+	const supportsAccountPicker = (walletNameStr: string | undefined): boolean => {
 		const name = (walletNameStr || '').toLowerCase();
 		return name.includes('slush');
 	};
 
-	const testTransaction = async () => {
+	const testTransaction = async (): Promise<void> => {
 		if (!account.value) {
 			error = 'Please connect your wallet first';
 			return;
@@ -79,14 +88,14 @@
 
 			const result = await signAndExecuteTransaction(tx);
 			transactionResult = result;
-		} catch (err) {
+		} catch (err: any) {
 			error = err.message || 'Transaction failed';
 		} finally {
 			isLoading = false;
 		}
 	};
 
-	const testSignMessage = async () => {
+	const testSignMessage = async (): Promise<void> => {
 		if (!account.value) {
 			error = 'Please connect your wallet first';
 			return;
@@ -99,14 +108,14 @@
 		try {
 			const result = await signMessage(message);
 			signatureResult = result;
-		} catch (err) {
+		} catch (err: any) {
 			error = err.message || 'Message signing failed';
 		} finally {
 			isSigningMessage = false;
 		}
 	};
 
-	const onConnect = () => {
+	const onConnect = (): void => {
 		error = null;
 		transactionResult = null;
 		signatureResult = null;
@@ -117,28 +126,31 @@
 		selectedAccountIndex = activeAccountIndex.value;
 	});
 
-	$effect(async () => {
+	$effect(() => {
+		// Fetch zkLogin info when account changes
 		if (account.value) {
-			try {
-				zkInfo = await getZkLoginInfo();
-			} catch {
-				zkInfo = null;
-			}
+			getZkLoginInfo()
+				.then((info: ZkLoginInfo | null) => {
+					zkInfo = info;
+				})
+				.catch(() => {
+					zkInfo = null;
+				});
 		} else {
 			zkInfo = null;
 		}
 	});
 
-	const checkDetectedWallets = () => {
+	const checkDetectedWallets = (): void => {
 		detectedAdapters = Array.isArray(walletAdapters) ? walletAdapters : [];
 	};
 
 	// Use packaged switchWallet with callbacks for custom UX
-	const onSwitchWallet = async () => {
+	const onSwitchWallet = async (): Promise<void> => {
 		try {
 			await switchWallet({
 				onSelection: onWalletSelection,
-				shouldConnect: ({ selectedWallet }) => {
+				shouldConnect: ({ selectedWallet }: { selectedWallet: any }) => {
 					if (
 						walletName.value &&
 						selectedWallet?.name === walletName.value &&
@@ -149,13 +161,13 @@
 					return true;
 				}
 			});
-		} catch (err) {
+		} catch (err: any) {
 			error = err?.message || 'Failed to switch wallet';
 		}
 	};
 
 	// Capture selection when connecting via button (not connected state)
-	const onWalletSelection = (payload) => {
+	const onWalletSelection = (payload: WalletSelectionPayload): void => {
 		try {
 			const selectedWallet = payload?.wallet ?? payload;
 			const installed =
@@ -167,7 +179,7 @@
 		} catch {}
 	};
 
-	const walletConfig = {
+	const walletConfig: WalletConfig = {
 		// Custom ordering (wallets not listed will appear after these in alphabetical order)
 		ordering: [
 			'Sign in with Google', // Then Google
@@ -178,7 +190,7 @@
 		]
 	};
 
-	const zkLoginGoogle = {
+	const zkLoginGoogle: ZkLoginGoogleConfig = {
 		apiKey: PUBLIC_ENOKI_API_KEY,
 		googleClientId: PUBLIC_GOOGLE_CLIENT_ID,
 		network: 'testnet'
@@ -312,7 +324,10 @@
 					</p>
 					<button
 						class="action-btn"
-						onclick={() => refreshSuiBalance(account.value.address)}
+						onclick={() => {
+							const addr = account.value?.address;
+							if (addr) refreshSuiBalance(addr);
+						}}
 						disabled={!account.value || suiBalanceLoading.value}
 					>
 						Refresh Balance
