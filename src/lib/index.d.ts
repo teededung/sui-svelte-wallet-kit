@@ -5,6 +5,8 @@ export type { ConnectButtonProps } from './ConnectButton/index';
 export { ConnectModal } from './ConnectModal/index';
 export type { ConnectModalProps, ConnectModalResponse, ConnectModalInstance } from './ConnectModal/index';
 
+export type { SuiClient } from '@mysten/sui/client';
+
 export {
   SuiModule,
   account,
@@ -59,7 +61,6 @@ export type {
   AccountStore,
   SuiNamesStore,
   LastWalletSelectionStore,
-  SuiModuleProps,
-  SuiClient
+  SuiModuleProps
 } from './SuiModule/index';
 
