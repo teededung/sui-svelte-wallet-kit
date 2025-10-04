@@ -206,7 +206,7 @@ Exports from `sui-svelte-wallet-kit`:
 - Components: `SuiModule`, `ConnectButton`, `ConnectModal`
 - Connection: `connectWithModal(onSelection?)`, `getConnectModal`, `connect(wallet)`, `disconnect`, `switchWallet(options?)`
 - Signing: `signAndExecuteTransaction(transaction)`, `signMessage(message)`, `canSignMessage()`
-- Wallet info: `wallet`, `walletName`, `walletIconUrl`, `lastWalletSelection`
+- Wallet info: `useCurrentWallet()`, `lastWalletSelection`
 - Accounts: `useCurrentAccount()`, `useAccounts()`, `activeAccountIndex`, `switchAccount(selector)`, `setAccountLabel(name)`, `accountLoading`
 - SuiNS: `suiNames`, `suiNamesLoading`, `suiNamesByAddress`
 - Balance: `suiBalance`, `suiBalanceLoading`, `suiBalanceByAddress`, `refreshSuiBalance(address?, { force?: boolean })`
@@ -348,7 +348,7 @@ All reactive stores and functions are fully typed:
 	import {
 		useCurrentAccount,
 		useSuiClient,
-		wallet,
+		useCurrentWallet,
 		suiBalance,
 		switchAccount,
 		signMessage,
@@ -359,24 +359,22 @@ All reactive stores and functions are fully typed:
 	// Use hooks for reactive state
 	let account = $derived(useCurrentAccount());
 	let client = $derived(useSuiClient());
+	let currentWallet = $derived(useCurrentWallet());
 
-	// Reactive stores are type-safe
+	// Reactive values are type-safe
 	$effect(() => {
-		const currentAccount: SuiAccount | undefined = account;
-		const currentClient: SuiClient = client;
-		const currentWallet: SuiWallet | undefined = wallet.value;
+		const a: SuiAccount | undefined = account;
+		const c: SuiClient = client;
+		const w: SuiWallet | undefined = currentWallet;
 		const balance: string | null = suiBalance.value;
 
-		console.log('Account:', currentAccount?.address);
-		console.log('Client network:', currentClient);
-		console.log('Wallet:', currentWallet?.name);
+		console.log('Account:', a?.address);
+		console.log('Client network:', c);
+		console.log('Wallet:', w?.name);
 		console.log('Balance:', balance);
 	});
 
-	// Type-safe function calls
-	const handleSwitchAccount = (index: number): boolean => {
-		return switchAccount(index);
-	};
+	const handleSwitchAccount = (index: number): boolean => switchAccount(index);
 
 	const handleSignMessage = async (message: string): Promise<void> => {
 		try {
@@ -389,19 +387,13 @@ All reactive stores and functions are fully typed:
 	};
 
 	const handleRefreshBalance = async (address: string): Promise<void> => {
-		const balance: string | null = await refreshSuiBalance(address, {
-			force: true,
-			ttlMs: 5000
-		});
+		const balance: string | null = await refreshSuiBalance(address, { force: true, ttlMs: 5000 });
 		console.log('Refreshed balance:', balance);
 	};
 
-	// Use SuiClient for queries
 	const fetchBalance = async (): Promise<void> => {
 		if (!account) return;
-		const balance = await client.getBalance({
-			owner: account.address
-		});
+		const balance = await client.getBalance({ owner: account.address });
 		console.log('Balance:', balance);
 	};
 </script>
@@ -411,7 +403,7 @@ All reactive stores and functions are fully typed:
 
 ```svelte
 <script lang="ts">
-	import { switchWallet, walletName } from 'sui-svelte-wallet-kit';
+	import { switchWallet } from 'sui-svelte-wallet-kit';
 	import type { SwitchWalletOptions, ConnectionResult, SuiWallet } from 'sui-svelte-wallet-kit';
 
 	const handleSwitchWallet = async (): Promise<void> => {
@@ -533,7 +525,7 @@ Connect, switch, disconnect with UX callbacks:
 		connectWithModal,
 		switchWallet,
 		disconnect,
-		walletName
+		useCurrentWallet
 	} from 'sui-svelte-wallet-kit';
 
 	const onWalletSelection = (payload) => {
@@ -543,11 +535,12 @@ Connect, switch, disconnect with UX callbacks:
 	};
 
 	const onSwitchWallet = async () => {
+		const currentWallet = $derived(useCurrentWallet());
 		await switchWallet({
 			onSelection: onWalletSelection,
 			shouldConnect: ({ selectedWallet }) => {
 				// Example: skip reconnecting to the same wallet if it lacks native account picker
-				if (walletName.value && selectedWallet?.name === walletName.value) return false;
+				if (currentWallet?.name && selectedWallet?.name === currentWallet.name) return false;
 				return true;
 			}
 		});

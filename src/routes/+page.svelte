@@ -3,9 +3,8 @@
 		SuiModule,
 		ConnectButton,
 		useCurrentAccount,
+		useCurrentWallet,
 		useAccounts,
-		walletName,
-		walletIconUrl,
 		switchAccount,
 		activeAccountIndex,
 		connectWithModal,
@@ -36,9 +35,10 @@
 
 	import { Transaction } from '@mysten/sui/transactions';
 
-	let account = $derived(useCurrentAccount());
-	let accounts = $derived(useAccounts());
-	let suiClient = $derived(useSuiClient());
+	const account = $derived(useCurrentAccount());
+	const accounts = $derived(useAccounts());
+	const currentWallet = $derived(useCurrentWallet());
+	const suiClient = $derived(useSuiClient());
 
 	// State with type annotations
 	let transactionResult = $state<any>(null);
@@ -191,8 +191,8 @@
 				onSelection: onWalletSelection,
 				shouldConnect: ({ selectedWallet }: { selectedWallet: any }) => {
 					if (
-						walletName.value &&
-						selectedWallet?.name === walletName.value &&
+						currentWallet?.name &&
+						selectedWallet?.name === currentWallet.name &&
 						!supportsAccountPicker(selectedWallet.name)
 					) {
 						return false;
@@ -275,14 +275,14 @@
 			{#if account}
 				<div class="account-info">
 					<h3>Connected Account</h3>
-					{#if walletName.value}
-						<p><strong>Wallet:</strong> {walletName.value}</p>
+					{#if currentWallet?.name}
+						<p><strong>Wallet:</strong> {currentWallet.name}</p>
 					{/if}
-					{#if walletIconUrl.value}
+					{#if currentWallet?.iconUrl}
 						<p>
 							<strong>Icon:</strong>
 							<img
-								src={walletIconUrl.value}
+								src={currentWallet.iconUrl}
 								alt="wallet icon"
 								style="width:24px;height:24px;vertical-align:middle;border-radius:4px;"
 							/>

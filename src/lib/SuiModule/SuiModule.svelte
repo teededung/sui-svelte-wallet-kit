@@ -550,22 +550,15 @@
 	};
 
 	// Expose connected wallet info
-	export const wallet = {
-		get value() {
-			return _wallet;
-		}
-	};
-
-	export const walletName = {
-		get value() {
-			return _wallet?.name ?? '';
-		}
-	};
-
-	export const walletIconUrl = {
-		get value() {
-			return _wallet?.iconUrl ?? '';
-		}
+	// Hook-style getter for current wallet info
+	export const useCurrentWallet = () => {
+		const base = _wallet || {};
+		return {
+			...base,
+			name: _wallet?.name ?? '',
+			iconUrl: _wallet?.iconUrl ?? '',
+			connectionStatus: status
+		};
 	};
 
 	export const lastWalletSelection = {

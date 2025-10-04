@@ -152,7 +152,7 @@ export interface SuiModuleProps {
 }
 
 /**
- * Hook to get current connected account (use without .value)
+ * Hook to get current connected account
  * @returns Current account or undefined if not connected
  * @example
  * const account = $derived(useCurrentAccount());
@@ -163,7 +163,7 @@ export interface SuiModuleProps {
 export function useCurrentAccount(): SuiAccount | undefined;
 
 /**
- * Hook to get all accounts from the connected wallet (use without .value)
+ * Hook to get all accounts from the connected wallet
  * @returns Array of accounts or empty array if not connected
  * @example
  * const accounts = $derived(useAccounts());
@@ -189,19 +189,14 @@ export const activeAccountIndex: ReadableStore<number>;
 export function switchAccount(selector: number | string | SuiAccount): boolean;
 
 /**
- * Connected wallet info (reactive store)
+ * Hook to get current wallet info
+ * Provides normalized fields for convenient access in templates
+ * @returns Current wallet-like object with name, iconUrl, connectionStatus, etc.
+ * @example
+ * const currentWallet = $derived(useCurrentWallet());
+ * console.log(currentWallet.name, currentWallet.iconUrl, currentWallet.connectionStatus);
  */
-export const wallet: ReadableStore<SuiWallet | undefined>;
-
-/**
- * Connected wallet name (reactive store)
- */
-export const walletName: ReadableStore<string>;
-
-/**
- * Connected wallet icon URL (reactive store)
- */
-export const walletIconUrl: ReadableStore<string>;
+export function useCurrentWallet(): SuiWallet & { connectionStatus: import('@suiet/wallet-sdk').ConnectionStatus } | { name: string; iconUrl: string; connectionStatus: import('@suiet/wallet-sdk').ConnectionStatus };
 
 /**
  * Last wallet selection from modal (reactive store)
@@ -289,7 +284,7 @@ export const suiNamesLoading: ReadableStore<boolean>;
 export const suiNamesByAddress: ReadableStore<Record<string, string[]>>;
 
 /**
- * Hook to get SuiClient instance for active chain (use without .value)
+ * Hook to get SuiClient instance for active chain
  * @returns SuiClient instance matching current account's chain
  * @example
  * const client = $derived(useSuiClient());
