@@ -72,6 +72,10 @@ export interface ZkLoginGoogleConfig {
   apiKey: string;
   googleClientId: string;
   network?: SuiNetwork;
+  /** Absolute URL to redirect back after Google OAuth */
+  redirectUrl?: string;
+  /** Allowed redirect URLs list; the module will pick the best match at runtime */
+  redirectUrls?: string[];
 }
 
 /**

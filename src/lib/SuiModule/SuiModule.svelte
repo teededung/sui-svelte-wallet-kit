@@ -62,6 +62,62 @@
 		}
 	};
 
+	// Normalize and validate absolute URL (http/https only)
+	const normalizeAbsoluteUrl = (value) => {
+		try {
+			if (typeof value !== 'string' || value.trim().length === 0) return undefined;
+			const url = new URL(value);
+			if (url.protocol === 'http:' || url.protocol === 'https:') return url.toString();
+			return undefined;
+		} catch {
+			return undefined;
+		}
+	};
+
+	// Pick best redirect URL from provided list (prefer same-origin and root path)
+	const pickRedirectFromList = (list) => {
+		if (!isBrowser) return undefined;
+		try {
+			const values = Array.isArray(list) ? list : [];
+			const valid = values.map((v) => normalizeAbsoluteUrl(v)).filter((v) => typeof v === 'string');
+			if (valid.length === 0) return undefined;
+			const current = new URL(window.location.href);
+			const sameOrigin = valid.filter((u) => {
+				try {
+					return new URL(u).origin === current.origin;
+				} catch {
+					return false;
+				}
+			});
+			if (sameOrigin.length > 0) {
+				const root = sameOrigin.find((u) => {
+					try {
+						return new URL(u).pathname === '/';
+					} catch {
+						return false;
+					}
+				});
+				return root || sameOrigin[0];
+			}
+			return valid[0];
+		} catch {
+			return undefined;
+		}
+	};
+
+	// Determine preferred redirect URL from config or fallback to safe root
+	const getPreferredRedirectUrlForOAuth = () => {
+		try {
+			const fromSingle = normalizeAbsoluteUrl(_zkLoginGoogle?.redirectUrl);
+			if (fromSingle) return fromSingle;
+			const fromList = pickRedirectFromList(_zkLoginGoogle?.redirectUrls);
+			if (fromList) return fromList;
+			return getSafeRedirectUrlForOAuth();
+		} catch {
+			return getSafeRedirectUrlForOAuth();
+		}
+	};
+
 	// Cache SuiClient instances by network string
 	const _clientCache = {};
 	const getSuiClient = (chainIdLike) => {
@@ -104,7 +160,7 @@
 						try {
 							const googleProviderOptions = { clientId: googleId };
 							try {
-								const ru = getSafeRedirectUrlForOAuth();
+								const ru = getPreferredRedirectUrlForOAuth();
 								if (ru) googleProviderOptions.redirectUrl = ru;
 							} catch {}
 							registerEnokiWallets({
