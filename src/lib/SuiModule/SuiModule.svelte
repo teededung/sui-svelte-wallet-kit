@@ -48,6 +48,20 @@
 	const isBrowser = typeof window !== 'undefined';
 	const hasLocalStorage = () => isBrowser && !!window.localStorage;
 
+	// Compute a safe redirect URL for OAuth providers (force root path to avoid route mismatches)
+	const getSafeRedirectUrlForOAuth = () => {
+		if (!isBrowser) return undefined;
+		try {
+			const url = new URL(window.location.href);
+			url.hash = '';
+			url.search = '';
+			url.pathname = '/';
+			return url.toString();
+		} catch {
+			return undefined;
+		}
+	};
+
 	// Cache SuiClient instances by network string
 	const _clientCache = {};
 	const getSuiClient = (chainIdLike) => {
@@ -88,12 +102,17 @@
 						// Skip registering Enoki if suspicious
 					} else {
 						try {
+							const googleProviderOptions = { clientId: googleId };
+							try {
+								const ru = getSafeRedirectUrlForOAuth();
+								if (ru) googleProviderOptions.redirectUrl = ru;
+							} catch {}
 							registerEnokiWallets({
 								client: _clientCache[network],
 								network,
 								apiKey,
 								providers: {
-									google: { clientId: googleId }
+									google: googleProviderOptions
 								}
 							});
 						} catch (err) {
