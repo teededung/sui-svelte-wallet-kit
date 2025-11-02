@@ -17,16 +17,16 @@
 		"build": "svelte-kit sync && vite build",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
-		"prepack": "yarn run package",
+		"prepack": "pnpm run package",
 		"package": "svelte-kit sync && svelte-package",
 		"lint:package": "publint",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"format": "prettier --write .",
 		"lint": "prettier --check . && eslint .",
-		"publish:patch": "yarn version patch && yarn build && yarn npm publish",
-		"publish:minor": "yarn version minor && yarn build && yarn npm publish",
-		"publish:major": "yarn version major && yarn build && yarn npm publish"
+		"publish:patch": "pnpm version patch && pnpm build && pnpm publish",
+		"publish:minor": "pnpm version minor && pnpm build && pnpm publish",
+		"publish:major": "pnpm version major && pnpm build && pnpm publish"
 	},
 	"files": [
 		"dist",
@@ -61,30 +61,30 @@
 		"svelte": "^5.0.0"
 	},
 	"devDependencies": {
-		"@eslint/compat": "^1.4.0",
-		"@eslint/js": "^9.37.0",
-		"@sveltejs/adapter-vercel": "^6.0.0",
-		"@sveltejs/kit": "^2.47.0",
+		"@eslint/compat": "^1.4.1",
+		"@eslint/js": "^9.39.0",
+		"@sveltejs/adapter-vercel": "^6.1.1",
+		"@sveltejs/kit": "^2.48.4",
 		"@sveltejs/package": "^2.5.4",
 		"@sveltejs/vite-plugin-svelte": "^6.2.1",
-		"eslint": "^9.37.0",
+		"eslint": "^9.39.0",
 		"eslint-config-prettier": "^10.1.8",
-		"eslint-plugin-svelte": "^3.12.4",
-		"globals": "^16.4.0",
+		"eslint-plugin-svelte": "^3.13.0",
+		"globals": "^16.5.0",
 		"prettier": "^3.6.2",
 		"prettier-plugin-svelte": "^3.4.0",
-		"publint": "^0.3.14",
-		"svelte": "^5.40.2",
+		"publint": "^0.3.15",
+		"svelte": "^5.43.2",
 		"svelte-check": "^4.3.3",
 		"typescript": "^5.9.3",
-		"typescript-eslint": "^8.46.1",
-		"vite": "^7.1.10",
+		"typescript-eslint": "^8.46.2",
+		"vite": "^7.1.12",
 		"vite-plugin-devtools-json": "^1.0.0"
 	},
 	"dependencies": {
-		"@mysten/enoki": "^0.12.6",
-		"@mysten/sui": "1.42.0",
-		"@mysten/wallet-standard": "^0.19.2",
+		"@mysten/enoki": "^0.12.10",
+		"@mysten/sui": "1.44.0",
+		"@mysten/wallet-standard": "^0.19.6",
 		"@suiet/wallet-sdk": "^0.5.0",
 		"@wallet-standard/core": "^1.1.1"
 	},
@@ -107,5 +107,5 @@
 		"typescript",
 		"components"
 	],
-	"packageManager": "yarn@4.9.2"
+	"packageManager": "pnpm@9.15.0"
 }
