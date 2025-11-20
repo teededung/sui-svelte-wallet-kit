@@ -266,7 +266,7 @@
 		<div class="wallet-section">
 			<h2>Wallet Connection</h2>
 			<div class="testnet-notice">
-				⚠️ Please change your wallet network to <strong>Testnet</strong>
+				💡 We recommend using <strong>Testnet</strong> for testing and development
 			</div>
 			<ConnectButton class="connect-btn" {onWalletSelection} />
 			{#if account}
