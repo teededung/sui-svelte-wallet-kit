@@ -260,11 +260,14 @@
 				</svg>
 			</a>
 			<h1>Sui Svelte Wallet Kit</h1>
-			<p>Connect Sui wallets, manage accounts, sign transactions</p>
+			<p>A Svelte developer toolkit for Sui blockchain wallet integration</p>
 		</header>
 
 		<div class="wallet-section">
 			<h2>Wallet Connection</h2>
+			<div class="testnet-notice">
+				⚠️ Please change your wallet network to <strong>Testnet</strong>
+			</div>
 			<ConnectButton class="connect-btn" {onWalletSelection} />
 			{#if account}
 				<button class="action-btn" style="margin-left: 0.75rem;" onclick={onSwitchWallet}>
@@ -401,7 +404,7 @@
 		</div>
 
 		<div class="message-section">
-			<h2>Message Signing</h2>
+			<h2>Message Signing Test</h2>
 			{#if account}
 				{#if canSignMessage()}
 					<div class="message-input">
@@ -534,8 +537,29 @@
 		margin-bottom: 3rem;
 	}
 
-	header p {
+	header :global(p) {
 		color: #94a3b8;
+	}
+
+	.testnet-notice {
+		margin-bottom: 1.25rem;
+		padding: 0.875rem 1.25rem;
+		background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.12));
+		border: 1px solid rgba(96, 165, 250, 0.35);
+		border-left: 4px solid #60a5fa;
+		border-radius: 10px;
+		color: #bfdbfe;
+		font-size: 0.9rem;
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		backdrop-filter: blur(6px);
+		box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+	}
+
+	.testnet-notice strong {
+		color: #93c5fd;
+		font-weight: 600;
 	}
 
 	h1 {
