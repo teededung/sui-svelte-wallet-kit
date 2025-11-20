@@ -514,11 +514,7 @@
 
 <style>
 	:global(body) {
-		background:
-			radial-gradient(1200px circle at 10% 10%, #1f2a5b 0%, transparent 40%),
-			radial-gradient(800px circle at 90% 20%, #5b2169 0%, transparent 35%),
-			radial-gradient(1000px circle at 30% 90%, #0f766e 0%, transparent 40%),
-			linear-gradient(180deg, #0b1021 0%, #0a0f2d 100%);
+		background: #0a0f2d;
 		color: #e5e7eb;
 		min-height: 100vh;
 		/* Avoid creating stacking contexts that would cover top-layer modals */
@@ -564,10 +560,7 @@
 
 	h1 {
 		margin-bottom: 0.5rem;
-		background: linear-gradient(90deg, #60a5fa, #a78bfa, #f472b6);
-		-webkit-background-clip: text;
-		background-clip: text;
-		color: transparent;
+		color: #60a5fa;
 		letter-spacing: 0.3px;
 	}
 
@@ -613,8 +606,7 @@
 	}
 
 	:global(.connect-btn) {
-		background: linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899);
-		background-size: 200% 200%;
+		background: #6366f1;
 		color: white;
 		border: 1px solid rgba(255, 255, 255, 0.18);
 		padding: 0.75rem 1.5rem;
@@ -622,20 +614,20 @@
 		font-size: 1rem;
 		cursor: pointer;
 		transition:
-			background-position 0.25s ease,
 			transform 0.15s ease,
-			box-shadow 0.25s ease;
+			box-shadow 0.25s ease,
+			filter 0.2s ease;
 		box-shadow: 0 10px 25px rgba(99, 102, 241, 0.35);
 	}
 
 	:global(.connect-btn:hover) {
-		background-position: 100% 0%;
+		filter: brightness(1.1);
 		transform: translateY(-1px);
 		box-shadow: 0 12px 28px rgba(99, 102, 241, 0.45);
 	}
 
 	.test-btn {
-		background: linear-gradient(135deg, #10b981, #14b8a6);
+		background: #10b981;
 		color: white;
 		border: 1px solid rgba(16, 185, 129, 0.35);
 		padding: 0.75rem 1.5rem;
@@ -710,7 +702,7 @@
 	}
 
 	.action-btn {
-		background: linear-gradient(135deg, #3b82f6, #6366f1);
+		background: #3b82f6;
 		color: white;
 		border: 1px solid rgba(99, 102, 241, 0.35);
 		padding: 0.75rem 1.5rem;
@@ -878,7 +870,7 @@
 	}
 
 	.sign-btn {
-		background: linear-gradient(135deg, #ec4899, #8b5cf6);
+		background: #ec4899;
 		color: white;
 		border: 1px solid rgba(139, 92, 246, 0.35);
 		padding: 0.75rem 1.5rem;
