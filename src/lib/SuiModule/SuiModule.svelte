@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
 	import {
 		AllDefaultWallets,
 		ConnectionStatus,
@@ -8,39 +8,50 @@
 	import ConnectModal from '../ConnectModal/ConnectModal.svelte';
 	import { SuiClient, getFullnodeUrl } from '@mysten/sui/client';
 	import { getWallets } from '@wallet-standard/core';
-
+	import type { Wallet, WalletAccount } from '@wallet-standard/core';
 	import { registerEnokiWallets } from '@mysten/enoki';
+	import type {
+		SuiWalletAdapter,
+		WalletConfig,
+		ZkLoginGoogleConfig,
+		ConnectionData,
+		WalletChangePayload,
+		WalletWithStatus,
+		ModalResponse,
+		SwitchWalletOptions,
+		SuiNetwork
+	} from './types';
 
-	let walletAdapter = $state();
+	let walletAdapter = $state<SuiWalletAdapter | undefined>();
 	let status = $state(ConnectionStatus.DISCONNECTED);
-	let _account = $state();
-	let _wallet = $state();
-	let _suiNames = $state([]);
+	let _account = $state<WalletAccount | undefined>();
+	let _wallet = $state<Wallet | WalletWithStatus | undefined>();
+	let _suiNames = $state<string[]>([]);
 	let _suiNamesLoading = $state(false);
-	let _suiNamesByAddress = $state({});
-	let _suiBalanceByAddress = $state({});
+	let _suiNamesByAddress = $state<Record<string, string[]>>({});
+	let _suiBalanceByAddress = $state<Record<string, string>>({});
 	let _suiBalanceLoading = $state(false);
 	let _lastRefreshKey = $state('');
 	let _lastAccountsKey = $state('');
 	let _suiNSInternalUpdate = $state(false);
 	let _suiNSPrefetched = $state(false);
-	let _walletEventsOff = $state();
+	let _walletEventsOff = $state<(() => void) | undefined>();
 	let _autoFetchSuiNS = $state(true);
 	let _autoFetchBalance = $state(true);
 	let _lastBalanceKey = $state('');
-	let _balanceFetchedAtByKey = $state({}); // key: owner|chain -> timestamp
+	let _balanceFetchedAtByKey = $state<Record<string, number>>({}); // key: owner|chain -> timestamp
 	let _balanceCacheTTLms = $state(2000); // default cache TTL for balance
-	let _balanceInflightByKey = {}; // key -> Promise
-	let _accountsSnapshot = $state([]);
-	let connectModal = $state();
+	let _balanceInflightByKey: Record<string, Promise<string | null> | undefined> = {}; // key -> Promise
+	let _accountsSnapshot = $state<WalletAccount[]>([]);
+	let connectModal: any = $state();
 	export let getConnectModal = () => connectModal;
 	let _onConnect = $state(() => {});
 	let _autoConnect = $state(false);
-	let _lastWalletSelection = $state();
-	let _walletConfig = $state({});
-	let _zkLoginGoogle = $state(null);
+	let _lastWalletSelection = $state<{ wallet: Wallet; installed: boolean } | undefined>();
+	let _walletConfig = $state<WalletConfig>({});
+	let _zkLoginGoogle = $state<ZkLoginGoogleConfig | null>(null);
 	let _enokiProbeDone = $state(false);
-	let _enokiKeyValid = $state(undefined);
+	let _enokiKeyValid = $state<boolean | undefined>(undefined);
 
 	const STORAGE_KEY = 'sui-module-connection';
 
@@ -63,7 +74,7 @@
 	};
 
 	// Normalize and validate absolute URL (http/https only)
-	const normalizeAbsoluteUrl = (value) => {
+	const normalizeAbsoluteUrl = (value: unknown): string | undefined => {
 		try {
 			if (typeof value !== 'string' || value.trim().length === 0) return undefined;
 			const url = new URL(value);
@@ -75,7 +86,7 @@
 	};
 
 	// Pick best redirect URL from provided list (prefer same-origin and root path)
-	const pickRedirectFromList = (list) => {
+	const pickRedirectFromList = (list: unknown): string | undefined => {
 		if (!isBrowser) return undefined;
 		try {
 			const values = Array.isArray(list) ? list : [];
@@ -118,12 +129,14 @@
 		}
 	};
 
-	// Cache SuiClient instances by network string
-	const _clientCache = {};
-	const getSuiClient = (chainIdLike) => {
+	const _clientCache: Record<string, SuiClient> = {};
+	const getSuiClient = (chainIdLike: string) => {
 		const network = chainIdLike?.split?.(':')?.[1] || 'mainnet';
 		if (!_clientCache[network]) {
-			_clientCache[network] = new SuiClient({ url: getFullnodeUrl(network), network });
+			_clientCache[network] = new SuiClient({
+				url: getFullnodeUrl(network as any),
+				network
+			});
 
 			// Register Enoki wallets only when zkLoginGoogle is enabled and in browser environment
 			if (_zkLoginGoogle && isBrowser) {
@@ -158,14 +171,16 @@
 						// Skip registering Enoki if suspicious
 					} else {
 						try {
-							const googleProviderOptions = { clientId: googleId };
+							const googleProviderOptions: any = {
+								clientId: googleId
+							};
 							try {
 								const ru = getPreferredRedirectUrlForOAuth();
 								if (ru) googleProviderOptions.redirectUrl = ru;
 							} catch {}
 							registerEnokiWallets({
 								client: _clientCache[network],
-								network,
+								network: network as any,
 								apiKey,
 								providers: {
 									google: googleProviderOptions
@@ -183,7 +198,7 @@
 		return _clientCache[network];
 	};
 
-	const saveConnectionData = (walletName) => {
+	const saveConnectionData = (walletName: string): void => {
 		if (!_autoConnect || !hasLocalStorage()) return;
 		const current = getConnectionData() || {};
 		window.localStorage.setItem(
@@ -192,13 +207,13 @@
 		);
 	};
 
-	const getConnectionData = () => {
+	const getConnectionData = (): ConnectionData | null => {
 		if (!hasLocalStorage()) return null;
 		const data = window.localStorage.getItem(STORAGE_KEY);
-		return data ? JSON.parse(data) : null;
+		return data ? (JSON.parse(data) as ConnectionData) : null;
 	};
 
-	const updateConnectionData = (partial) => {
+	const updateConnectionData = (partial: Partial<ConnectionData>): void => {
 		if (!hasLocalStorage()) return;
 		const current = getConnectionData() || {};
 		window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...partial }));
@@ -211,9 +226,8 @@
 
 	/**
 	 * Get configured network from zkLoginGoogle.network (only for zkLogin wallets)
-	 * @returns {import('./SuiModule.svelte').SuiNetwork | undefined}
 	 */
-	const getConfiguredNetwork = () => {
+	const getConfiguredNetwork = (): SuiNetwork | undefined => {
 		try {
 			const net = _zkLoginGoogle?.network;
 			if (net === 'mainnet' || net === 'testnet' || net === 'devnet') return net;
@@ -236,15 +250,20 @@
 		return 'sui:mainnet';
 	};
 
-	const isSuiAccount = (acc) =>
-		Array.isArray(acc?.chains) && acc.chains.some((c) => c?.startsWith?.('sui:'));
+	const isSuiAccount = (acc: unknown): acc is WalletAccount =>
+		typeof acc === 'object' &&
+		acc !== null &&
+		'chains' in acc &&
+		Array.isArray((acc as WalletAccount).chains) &&
+		(acc as WalletAccount).chains.some((c) => typeof c === 'string' && c.startsWith('sui:'));
 
-	const setAccountChainsInPlace = (chains) => {
+	const setAccountChainsInPlace = (chains: readonly `${string}:${string}`[]): void => {
 		if (!account.value) return;
 		try {
 			const desc = Object.getOwnPropertyDescriptor(account.value, 'chains');
 			if (desc && desc.writable) {
-				account.value.chains = chains || account.value.chains;
+				(account.value as WalletAccount & { chains: readonly `${string}:${string}`[] }).chains =
+					chains || account.value.chains;
 			} else {
 				Object.defineProperty(account.value, 'chains', {
 					value: chains || account.value.chains,
@@ -255,7 +274,6 @@
 			}
 		} catch (_) {
 			account.setAccount({
-				address: account.value.address,
 				...account.value,
 				chains: chains || account.value.chains
 			});
@@ -282,14 +300,16 @@
 			const active = byName || byAddr;
 			if (!active) return;
 
-			const eventsFeature = active.features?.['standard:events'];
+			const eventsFeature = active.features?.['standard:events'] as {
+				on?: (event: string, callback: (payload: WalletChangePayload) => void) => () => void;
+			};
 			if (!eventsFeature || typeof eventsFeature.on !== 'function') return;
 
-			_walletEventsOff = eventsFeature.on('change', async (payload) => {
+			_walletEventsOff = eventsFeature.on('change', async (payload: WalletChangePayload) => {
 				const { accounts, chains } = payload || {};
 				// Some wallets emit `chains` directly on network change
 				if (Array.isArray(chains) && chains.length > 0) {
-					setAccountChainsInPlace(chains);
+					setAccountChainsInPlace(chains as readonly `${string}:${string}`[]);
 					updateConnectionData({ selectedChain: chains[0] });
 					return;
 				}
@@ -299,7 +319,7 @@
 				const suiAccounts = accounts.filter(isSuiAccount);
 				if (suiAccounts.length === 0) return;
 				_accountsSnapshot = suiAccounts;
-				const lower = (s) => (typeof s === 'string' ? s.toLowerCase() : s);
+				const lower = (s: string) => s.toLowerCase();
 				const currentAddr = lower(activeAddr);
 				const nextAccount =
 					suiAccounts.find((a) => lower(a.address) === currentAddr) || suiAccounts[0];
@@ -310,7 +330,7 @@
 					? nextAccount.chains
 					: account.value?.chains;
 				if (Array.isArray(effChains) && effChains.length > 0) {
-					setAccountChainsInPlace(effChains);
+					setAccountChainsInPlace(effChains as readonly `${string}:${string}`[]);
 				}
 				updateConnectionData({
 					selectedAccountAddress: nextAccount.address,
@@ -367,7 +387,10 @@
 
 	// Fetch SUI coin balance for provided address (default: active account)
 	// options.force = true to bypass TTL; options.ttlMs to override default TTL for this call
-	export const refreshSuiBalance = async (targetAddress, options = {}) => {
+	export const refreshSuiBalance = async (
+		targetAddress: string,
+		options: { force?: boolean; ttlMs?: number } = {}
+	) => {
 		const owner = targetAddress ?? account.value?.address;
 		if (!owner) return null;
 		const chainId = account.value?.chains?.[0] || getDefaultChain();
@@ -409,7 +432,7 @@
 		return fetchPromise;
 	};
 
-	export const setSuiBalanceCacheTTL = (ms) => {
+	export const setSuiBalanceCacheTTL = (ms: number) => {
 		const next = Number.isFinite(ms) ? Math.max(0, ms) : _balanceCacheTTLms;
 		_balanceCacheTTLms = next;
 	};
@@ -450,12 +473,12 @@
 				})
 			);
 
-			const mapping = {};
+			const mapping: Record<string, string[]> = {};
 			for (const r of results) {
 				if (r.status === 'fulfilled') {
 					mapping[r.value.address] = r.value.names;
-				} else if (r.status === 'rejected' && r.reason?.address) {
-					mapping[r.reason.address] = [];
+				} else if (r.status === 'rejected' && (r.reason as any)?.address) {
+					mapping[(r.reason as any).address] = [];
 				}
 			}
 			_suiNamesByAddress = { ..._suiNamesByAddress, ...mapping };
@@ -466,12 +489,12 @@
 		}
 	};
 
-	const setAccountLabelInPlace = (name) => {
+	const setAccountLabelInPlace = (name: string): void => {
 		if (!account.value) return;
 		try {
 			const desc = Object.getOwnPropertyDescriptor(account.value, 'label');
 			if (desc && desc.writable) {
-				account.value.label = name || undefined;
+				(account.value as WalletAccount & { label?: string }).label = name || undefined;
 			} else {
 				Object.defineProperty(account.value, 'label', {
 					value: name || undefined,
@@ -483,9 +506,8 @@
 		} catch (_) {
 			// As a last resort, do a shallow copy without losing essential fields
 			account.setAccount({
-				address: account.value.address,
-				chains: account.value.chains,
 				...account.value,
+				chains: account.value.chains,
 				label: name || undefined
 			});
 			return;
@@ -498,7 +520,7 @@
 		});
 	};
 
-	export const setAccountLabel = (name) => {
+	export const setAccountLabel = (name: string) => {
 		setAccountLabelInPlace(name);
 	};
 
@@ -510,13 +532,13 @@
 
 	// Internal account management (not exported)
 	const account = {
-		get value() {
+		get value(): WalletAccount | undefined {
 			return _account;
 		},
-		setAccount(account) {
+		setAccount(account: WalletAccount | undefined): void {
 			_account = account;
 		},
-		removeAccount() {
+		removeAccount(): void {
 			_account = undefined;
 		}
 	};
@@ -590,21 +612,21 @@
 		get value() {
 			if (!account.value) return -1;
 			const list = Array.isArray(_accountsSnapshot) ? _accountsSnapshot : [];
-			return list.findIndex((acc) => acc.address === account.value.address);
+			return list.findIndex((acc) => acc.address === account.value!.address);
 		}
 	};
 
-	export const switchAccount = (selector) => {
+	export const switchAccount = (selector: number | string | WalletAccount): boolean => {
 		ensureCallable();
 		const list = Array.isArray(_accountsSnapshot) ? _accountsSnapshot : [];
 
-		let nextAccount = undefined;
+		let nextAccount: WalletAccount | undefined = undefined;
 		if (typeof selector === 'number') {
 			nextAccount = list[selector];
 		} else if (typeof selector === 'string') {
 			const target = selector.toLowerCase();
 			nextAccount = list.find((acc) => acc.address.toLowerCase() === target);
-		} else if (selector && typeof selector === 'object') {
+		} else if (selector && typeof selector === 'object' && 'address' in selector) {
 			const target = selector.address?.toLowerCase();
 			nextAccount = list.find((acc) => acc.address.toLowerCase() === target) || selector;
 		}
@@ -612,7 +634,7 @@
 		if (!nextAccount) return false;
 		account.setAccount(nextAccount);
 		if (!Array.isArray(nextAccount?.chains) || nextAccount.chains.length === 0) {
-			setAccountChainsInPlace([getDefaultChain()]);
+			setAccountChainsInPlace([getDefaultChain() as `${string}:${string}`]);
 		}
 		updateConnectionData({
 			selectedAccountAddress: nextAccount.address,
@@ -631,7 +653,7 @@
 		return {
 			...base,
 			name: _wallet?.name ?? '',
-			iconUrl: _wallet?.iconUrl ?? '',
+			iconUrl: (_wallet as any)?.iconUrl ?? _wallet?.icon ?? '',
 			connectionStatus: status
 		};
 	};
@@ -645,16 +667,20 @@
 		}
 	};
 
-	export const connectWithModal = async (onSelection) => {
+	export const connectWithModal = async (
+		onSelection?: (payload: { wallet: Wallet; installed: boolean; connected: boolean }) => void
+	) => {
 		if (account.value) return { connected: true, alreadyConnected: true };
 		// Reuse the internal selection loop so behavior is consistent with switchWallet
 		while (true) {
-			const result = await connectModal?.openAndWaitForResponse();
+			const result: ModalResponse | undefined = await connectModal?.openAndWaitForResponse();
 			if (!result)
 				return { wallet: undefined, installed: false, connected: false, cancelled: true };
-			const selectedWallet = result?.wallet ?? result;
+			const selectedWallet = result?.wallet ?? (result as unknown as Wallet);
 			const installed =
-				typeof result === 'object' ? !!result?.installed : !!selectedWallet?.installed;
+				typeof result === 'object'
+					? !!result?.installed
+					: !!(selectedWallet as WalletWithStatus)?.installed;
 			_lastWalletSelection = { wallet: selectedWallet, installed: !!installed };
 			try {
 				onSelection?.({ wallet: selectedWallet, installed, connected: false });
@@ -668,8 +694,8 @@
 		}
 	};
 
-	export const connect = async (wallet) => {
-		walletAdapter = wallet?.adapter;
+	export const connect = async (wallet: Wallet | WalletWithStatus): Promise<void> => {
+		walletAdapter = (wallet as WalletWithStatus)?.adapter;
 		if (walletAdapter) {
 			status = ConnectionStatus.CONNECTING;
 			try {
@@ -677,8 +703,7 @@
 				if (typeof walletAdapter.connect === 'function') {
 					await walletAdapter.connect();
 				} else if (
-					walletAdapter?.features &&
-					walletAdapter.features['standard:connect'] &&
+					walletAdapter?.features?.['standard:connect'] &&
 					typeof walletAdapter.features['standard:connect'].connect === 'function'
 				) {
 					// Fallback to Wallet Standard connect (e.g., Enoki zkLogin)
@@ -694,16 +719,14 @@
 				const preferredAddress = connectionData?.selectedAccountAddress?.toLowerCase();
 				let selectedAccount = allAccounts[0];
 				if (preferredAddress) {
-					const found = allAccounts.find(
-						(acc) => acc?.address?.toLowerCase && acc.address.toLowerCase() === preferredAddress
-					);
+					const found = allAccounts.find((acc) => acc.address.toLowerCase() === preferredAddress);
 					if (found) selectedAccount = found;
 				}
 
 				account.setAccount(selectedAccount);
 				// Ensure account has a valid chain identifier
 				if (!Array.isArray(selectedAccount?.chains) || selectedAccount.chains.length === 0) {
-					const defaultChain = getDefaultChain();
+					const defaultChain = getDefaultChain() as `${string}:${string}`;
 					setAccountChainsInPlace([defaultChain]);
 				}
 				_wallet = wallet;
@@ -726,7 +749,7 @@
 		}
 	};
 
-	export const disconnect = () => {
+	export const disconnect = (): void => {
 		// Support both Wallet Standard and adapter-specific disconnect
 		try {
 			const std = walletAdapter?.features?.['standard:disconnect'];
@@ -771,21 +794,23 @@
 	// options.onBeforeDisconnect(currentWallet, selectedWallet)
 	// options.onConnected(newWallet)
 	// options.onCancel()
-	export const switchWallet = async (options = {}) => {
+	export const switchWallet = async (options: SwitchWalletOptions = {}) => {
 		try {
 			const modal = typeof getConnectModal === 'function' ? getConnectModal() : undefined;
 			if (!modal) return { connected: false, cancelled: true };
 			while (true) {
-				const result = await modal.openAndWaitForResponse();
+				const result: ModalResponse | undefined = await modal.openAndWaitForResponse();
 				if (!result) {
 					try {
 						options?.onCancel?.();
 					} catch {}
 					return { connected: false, cancelled: true };
 				}
-				const selectedWallet = result?.wallet ?? result;
+				const selectedWallet = result?.wallet ?? (result as unknown as Wallet);
 				const installed =
-					typeof result === 'object' ? !!result?.installed : !!selectedWallet?.installed;
+					typeof result === 'object'
+						? !!result?.installed
+						: !!(selectedWallet as WalletWithStatus)?.installed;
 				_lastWalletSelection = { wallet: selectedWallet, installed: !!installed };
 				try {
 					options?.onSelection?.({ wallet: selectedWallet, installed, connected: false });
@@ -826,9 +851,10 @@
 		}
 	};
 
-	export const signAndExecuteTransaction = async (transaction) => {
+	export const signAndExecuteTransaction = async (transaction: any): Promise<any> => {
 		ensureCallable();
 		const acct = account.value;
+		if (!acct) throw new Error('No account connected');
 		const chain =
 			Array.isArray(acct?.chains) && acct.chains[0] ? acct.chains[0] : getDefaultChain();
 		// Ensure sender is set for wallets (e.g., Enoki) that require explicit sender
@@ -855,13 +881,16 @@
 		throw new Error('This wallet does not support signAndExecuteTransaction.');
 	};
 
-	export const signMessage = async (message) => {
+	export const signMessage = async (
+		message: string | Uint8Array
+	): Promise<{ signature: string; messageBytes: string }> => {
 		ensureCallable();
 
 		// Convert string to Uint8Array if needed
 		const messageBytes = typeof message === 'string' ? new TextEncoder().encode(message) : message;
 
 		const acct = account.value;
+		if (!acct) throw new Error('No account connected');
 		const chain =
 			Array.isArray(acct?.chains) && acct.chains[0] ? acct.chains[0] : getDefaultChain();
 
@@ -912,7 +941,7 @@
 		);
 	};
 
-	export const canSignMessage = () => {
+	export const canSignMessage = (): boolean => {
 		if (status !== ConnectionStatus.CONNECTED || !walletAdapter) {
 			return false;
 		}
@@ -930,7 +959,7 @@
 		);
 	};
 
-	const isSuspiciousEnokiConfig = (apiKey, googleId) => {
+	const isSuspiciousEnokiConfig = (apiKey: unknown, googleId: unknown): boolean => {
 		try {
 			const suspiciousApiKey = typeof apiKey === 'string' && apiKey.length < 16;
 			const suspiciousGoogleId =
@@ -942,15 +971,15 @@
 	};
 
 	// zkLogin helpers (Enoki)
-	export const isZkLoginWallet = () => {
+	export const isZkLoginWallet = (): boolean => {
 		return !!walletAdapter?.features?.['enoki:getSession'];
 	};
 
-	export const getZkLoginInfo = async () => {
+	export const getZkLoginInfo = async (): Promise<{ session: any; metadata: any } | null> => {
 		if (!isZkLoginWallet()) return null;
 		try {
-			const sessionFeat = walletAdapter.features['enoki:getSession'];
-			const metaFeat = walletAdapter.features['enoki:getMetadata'];
+			const sessionFeat = walletAdapter?.features?.['enoki:getSession'];
+			const metaFeat = walletAdapter?.features?.['enoki:getMetadata'];
 			let session = null;
 			let metadata = null;
 			try {
@@ -969,13 +998,16 @@
 		}
 	};
 
-	const normalizeWalletName = (name) =>
+	const normalizeWalletName = (name: string) =>
 		(name || '')
 			.toLowerCase()
 			.replace(/wallet$/g, '')
 			.replace(/[^a-z0-9]/g, '');
 
-	const applyWalletConfig = (wallets, config) => {
+	const applyWalletConfig = (
+		wallets: WalletWithStatus[],
+		config: WalletConfig
+	): WalletWithStatus[] => {
 		const { customNames = {}, ordering = [] } = config;
 
 		// Apply custom names
@@ -1017,11 +1049,15 @@
 		return result;
 	};
 
-	const getAvailableWallets = (defaultWallets, detectedAdapters, config = {}) => {
+	const getAvailableWallets = (
+		defaultWallets: readonly { name: string; iconUrl?: string; [key: string]: any }[],
+		detectedAdapters: SuiWalletAdapter[],
+		config: WalletConfig = {}
+	): WalletWithStatus[] => {
 		const adapters = Array.isArray(detectedAdapters) ? detectedAdapters : detectWalletAdapters();
 
 		// Map default wallets to detected adapters by fuzzy-normalized name matching
-		const list = defaultWallets.map((item) => {
+		const list: WalletWithStatus[] = defaultWallets.map((item) => {
 			const normalizedItem = normalizeWalletName(item.name);
 			const foundAdapter = adapters.find((walletAdapter) => {
 				const normalizedAdapter = normalizeWalletName(walletAdapter.name);
@@ -1032,9 +1068,11 @@
 
 			return {
 				...item,
+				name: item.name,
+				iconUrl: item.iconUrl,
 				adapter: foundAdapter ? foundAdapter : undefined,
 				installed: !!foundAdapter
-			};
+			} as WalletWithStatus;
 		});
 
 		// Include extra detected adapters that are NOT present in the default wallet list
@@ -1045,11 +1083,11 @@
 			return !defaultNormalizedNames.some((dn) => dn.includes(na) || na.includes(dn));
 		});
 
-		const extraWalletEntries = extraAdapters.map((a) => ({
+		const extraWalletEntries: WalletWithStatus[] = extraAdapters.map((a) => ({
 			name: a.name,
 			originalName: a.name,
 			displayName: a.name,
-			iconUrl: a.icon,
+			iconUrl: typeof a.icon === 'string' ? a.icon : undefined,
 			adapter: a,
 			installed: true
 		}));
@@ -1057,7 +1095,7 @@
 		return applyWalletConfig([...list, ...extraWalletEntries], config);
 	};
 
-	const detectWalletAdapters = () => {
+	const detectWalletAdapters = (): SuiWalletAdapter[] => {
 		if (!isBrowser) return [];
 		const walletRadar = new WalletRadar();
 		walletRadar.activate();
@@ -1066,7 +1104,7 @@
 		const radarAdapters = walletRadar.getDetectedWalletAdapters();
 
 		// Also include wallets registered via Wallet Standard registry (e.g., Enoki providers)
-		let registryWallets = [];
+		let registryWallets: readonly Wallet[] = [];
 		try {
 			const registry = getWallets?.();
 			if (registry && typeof registry.get === 'function') {
@@ -1077,34 +1115,39 @@
 		walletRadar.deactivate();
 
 		// Merge and de-duplicate by name
-		return uniqueAdaptersByName([...(radarAdapters || []), ...(registryWallets || [])]);
+		return uniqueAdaptersByName([...(radarAdapters || []), ...Array.from(registryWallets || [])]);
 	};
 
-	const ensureCallable = () => {
+	const ensureCallable = (): void => {
 		if (status !== ConnectionStatus.CONNECTED) {
 			throw Error('wallet is not connected');
 		}
 	};
 
-	export const walletAdapters = [];
-	export const availableWallets = [];
+	export const walletAdapters: SuiWalletAdapter[] = [];
+	export const availableWallets: WalletWithStatus[] = [];
 
-	let _walletsRegistryOff = undefined;
+	let _walletsRegistryOff: (() => void) | undefined = undefined;
 	let _discoveryInitialized = false;
-	const _discoverySubscribers = new Set();
+	const _discoverySubscribers = new Set<
+		(adapters: SuiWalletAdapter[], wallets: WalletWithStatus[]) => void
+	>();
 	let _lastDiscoveryLogKey = '';
 	let _lastAvailableLogKey = '';
 	let _discoveryAttempt = 0;
-	const uniqueAdaptersByName = (adapters) => {
-		const map = new Map();
+	const uniqueAdaptersByName = (adapters: (Wallet | SuiWalletAdapter)[]): SuiWalletAdapter[] => {
+		const map = new Map<string, SuiWalletAdapter>();
 		for (const a of adapters || []) {
 			if (!a || !a.name) continue;
-			if (!map.has(a.name)) map.set(a.name, a);
+			if (!map.has(a.name)) map.set(a.name, a as SuiWalletAdapter);
 		}
 		return Array.from(map.values());
 	};
 
-	export const setModuleWalletDiscovery = (adapters, wallets) => {
+	export const setModuleWalletDiscovery = (
+		adapters: SuiWalletAdapter[],
+		wallets: WalletWithStatus[]
+	): void => {
 		const nextAdapters = Array.isArray(adapters) ? adapters : [];
 		const nextWallets = Array.isArray(wallets) ? wallets : [];
 		// In-place mutation to preserve module live bindings and avoid reassignment
@@ -1121,7 +1164,9 @@
 		} catch {}
 	};
 
-	export const subscribeWalletDiscovery = (callback) => {
+	export const subscribeWalletDiscovery = (
+		callback: (adapters: SuiWalletAdapter[], wallets: WalletWithStatus[]) => void
+	): (() => void) => {
 		if (typeof callback !== 'function') return () => {};
 		_discoverySubscribers.add(callback);
 		// Emit current snapshot immediately
@@ -1133,7 +1178,7 @@
 		};
 	};
 
-	const refreshDiscoverySnapshot = (attemptLabel) => {
+	const refreshDiscoverySnapshot = (attemptLabel: number | string): void => {
 		const snapshot = uniqueAdaptersByName(detectWalletAdapters());
 		try {
 			const adapterNames = snapshot
@@ -1170,7 +1215,7 @@
 	};
 
 	// Lightweight API probe to validate Enoki API key without completing OAuth flow
-	const probeEnokiApiKey = async (apiKey, network) => {
+	const probeEnokiApiKey = async (apiKey: string, network: string): Promise<void> => {
 		if (!isBrowser) return;
 		if (!apiKey) return;
 		try {
@@ -1202,7 +1247,7 @@
 		}
 	};
 
-	export const initWalletDiscovery = () => {
+	export const initWalletDiscovery = (): void => {
 		if (!isBrowser) return;
 		if (_discoveryInitialized) return;
 		_discoveryInitialized = true;
@@ -1253,8 +1298,12 @@
 		// Also listen to Wallet Standard registry events if available
 		try {
 			const registry = getWallets?.();
-			if (registry && typeof registry.on === 'function') {
-				_walletsRegistryOff = registry.on('register', (wallet) => {
+			const registryOn =
+				registry && 'on' in registry
+					? (registry.on as (event: string, callback: (wallet: Wallet) => void) => () => void)
+					: undefined;
+			if (registryOn && typeof registryOn === 'function') {
+				_walletsRegistryOff = registryOn('register', (wallet: Wallet) => {
 					try {
 						_discoveryAttempt += 1;
 						const ts = new Date().toISOString();
@@ -1270,7 +1319,7 @@
 	};
 </script>
 
-<script>
+<script lang="ts">
 	const {
 		onConnect,
 		autoConnect = false,
@@ -1290,9 +1339,9 @@
 	_zkLoginGoogle = zkLoginGoogle || null;
 
 	// Mirror discovery to instance state for reactive UI updates
-	let _discoveredAdapters = $state([]);
-	let _availableWalletsState = $state([]);
-	let _availableWalletsVisible = $state([]);
+	let _discoveredAdapters = $state<SuiWalletAdapter[]>([]);
+	let _availableWalletsState = $state<WalletWithStatus[]>([]);
+	let _availableWalletsVisible = $state<WalletWithStatus[]>([]);
 
 	$effect(() => {
 		// Start discovery after mount; subscribe for updates

@@ -3,61 +3,79 @@ import type { Transaction } from '@mysten/sui/transactions';
 import type { SuiClient } from '@mysten/sui/client';
 import type { Snippet } from 'svelte';
 
+// Re-export types from types.ts for convenience
+export type {
+	SuiWalletAdapter,
+	WalletConfig,
+	ZkLoginGoogleConfig,
+	ConnectionData,
+	WalletChangePayload,
+	WalletWithStatus,
+	ModalResponse,
+	SwitchWalletOptions,
+	RefreshBalanceOptions,
+	SuiNetwork,
+	SignAndExecuteTransactionParams,
+	SignMessageParams,
+	SignPersonalMessageParams,
+	SignMessageResult
+} from './types';
+
 /**
  * Sui account representation
  */
 export interface SuiAccount {
-  address: string;
-  label?: string;
-  chains?: string[];
-  publicKey?: Uint8Array;
-  [key: string]: any;
+	address: string;
+	label?: string;
+	chains?: string[];
+	publicKey?: Uint8Array;
+	[key: string]: any;
 }
 
 /**
  * Wallet representation
  */
 export interface SuiWallet {
-  name: string;
-  iconUrl?: string;
-  adapter?: any;
-  installed?: boolean;
-  displayName?: string;
-  originalName?: string;
-  [key: string]: any;
+	name: string;
+	iconUrl?: string;
+	adapter?: any;
+	installed?: boolean;
+	displayName?: string;
+	originalName?: string;
+	[key: string]: any;
 }
 
 /**
  * Wallet selection result
  */
 export interface WalletSelectionPayload {
-  wallet: SuiWallet;
-  installed: boolean;
+	wallet: SuiWallet;
+	installed: boolean;
 }
 
 /**
  * Connection result
  */
 export interface ConnectionResult {
-  wallet?: SuiWallet;
-  installed: boolean;
-  connected: boolean;
-  cancelled?: boolean;
-  alreadyConnected?: boolean;
-  skipped?: boolean;
-  started?: boolean;
-  error?: string;
+	wallet?: SuiWallet;
+	installed: boolean;
+	connected: boolean;
+	cancelled?: boolean;
+	alreadyConnected?: boolean;
+	skipped?: boolean;
+	started?: boolean;
+	error?: string;
 }
 
 /**
  * Switch wallet options
  */
 export interface SwitchWalletOptions {
-  onSelection?: (payload: WalletSelectionPayload) => void;
-  shouldConnect?: (context: { selectedWallet: SuiWallet; currentWallet?: SuiWallet }) => boolean;
-  onBeforeDisconnect?: (currentWallet?: SuiWallet, selectedWallet?: SuiWallet) => void;
-  onConnected?: (wallet?: SuiWallet) => void;
-  onCancel?: () => void;
+	onSelection?: (payload: WalletSelectionPayload) => void;
+	shouldConnect?: (context: { selectedWallet: SuiWallet; currentWallet?: SuiWallet }) => boolean;
+	onBeforeDisconnect?: (currentWallet?: SuiWallet, selectedWallet?: SuiWallet) => void;
+	onConnected?: (wallet?: SuiWallet) => void;
+	onCancel?: () => void;
 }
 
 /**
@@ -69,90 +87,91 @@ export type SuiNetwork = 'mainnet' | 'testnet' | 'devnet';
  * zkLogin configuration for Google (Enoki)
  */
 export interface ZkLoginGoogleConfig {
-  apiKey: string;
-  googleClientId: string;
-  network?: SuiNetwork;
-  /** Absolute URL to redirect back after Google OAuth */
-  redirectUrl?: string;
-  /** Allowed redirect URLs list; the module will pick the best match at runtime */
-  redirectUrls?: string[];
+	apiKey: string;
+	googleClientId: string;
+	network?: SuiNetwork;
+	/** Absolute URL to redirect back after Google OAuth */
+	redirectUrl?: string;
+	/** Allowed redirect URLs list; the module will pick the best match at runtime */
+	redirectUrls?: string[];
 }
 
 /**
  * zkLogin session info
  */
 export interface ZkLoginInfo {
-  session?: any;
-  metadata?: {
-    provider?: string;
-    [key: string]: any;
-  };
+	session?: any;
+	metadata?: {
+		provider?: string;
+		[key: string]: any;
+	};
 }
 
 /**
  * Wallet configuration
  */
 export interface WalletConfig {
-  customNames?: Record<string, string>;
-  ordering?: string[];
+	customNames?: Record<string, string>;
+	ordering?: string[];
 }
 
 /**
  * Message signing result
  */
 export interface SignMessageResult {
-  signature: string;
-  messageBytes: string;
+	signature: string;
+	messageBytes: string;
 }
 
 /**
  * Refresh balance options
  */
 export interface RefreshBalanceOptions {
-  force?: boolean;
-  ttlMs?: number;
+	force?: boolean;
+	ttlMs?: number;
 }
 
 /**
  * Reactive store with value getter
  */
 export interface ReadableStore<T> {
-  readonly value: T;
+	readonly value: T;
 }
 
 /**
  * Account store with mutation methods
  */
 export interface AccountStore extends ReadableStore<SuiAccount | undefined> {
-  setAccount(account: SuiAccount | undefined): void;
-  removeAccount(): void;
+	setAccount(account: SuiAccount | undefined): void;
+	removeAccount(): void;
 }
 
 /**
  * SuiNames store with clear method
  */
 export interface SuiNamesStore extends ReadableStore<string[]> {
-  clear(): void;
+	clear(): void;
 }
 
 /**
  * Last wallet selection store with clear method
  */
-export interface LastWalletSelectionStore extends ReadableStore<WalletSelectionPayload | undefined> {
-  clear(): void;
+export interface LastWalletSelectionStore
+	extends ReadableStore<WalletSelectionPayload | undefined> {
+	clear(): void;
 }
 
 /**
  * SuiModule component props
  */
 export interface SuiModuleProps {
-  onConnect?: () => void;
-  autoConnect?: boolean;
-  autoSuiNS?: boolean;
-  autoSuiBalance?: boolean;
-  walletConfig?: WalletConfig;
-  zkLoginGoogle?: ZkLoginGoogleConfig | null;
-  children?: Snippet;
+	onConnect?: () => void;
+	autoConnect?: boolean;
+	autoSuiNS?: boolean;
+	autoSuiBalance?: boolean;
+	walletConfig?: WalletConfig;
+	zkLoginGoogle?: ZkLoginGoogleConfig | null;
+	children?: Snippet;
 }
 
 /**
@@ -200,7 +219,13 @@ export function switchAccount(selector: number | string | SuiAccount): boolean;
  * const currentWallet = $derived(useCurrentWallet());
  * console.log(currentWallet.name, currentWallet.iconUrl, currentWallet.connectionStatus);
  */
-export function useCurrentWallet(): SuiWallet & { connectionStatus: import('@suiet/wallet-sdk').ConnectionStatus } | { name: string; iconUrl: string; connectionStatus: import('@suiet/wallet-sdk').ConnectionStatus };
+export function useCurrentWallet():
+	| (SuiWallet & { connectionStatus: import('@suiet/wallet-sdk').ConnectionStatus })
+	| {
+			name: string;
+			iconUrl: string;
+			connectionStatus: import('@suiet/wallet-sdk').ConnectionStatus;
+	  };
 
 /**
  * Last wallet selection from modal (reactive store)
@@ -220,7 +245,7 @@ export function switchWallet(options?: SwitchWalletOptions): Promise<ConnectionR
  * @returns Connection result
  */
 export function connectWithModal(
-  onSelection?: (payload: WalletSelectionPayload) => void
+	onSelection?: (payload: WalletSelectionPayload) => void
 ): Promise<ConnectionResult>;
 
 /**
@@ -318,8 +343,8 @@ export const suiBalanceByAddress: ReadableStore<Record<string, string>>;
  * @returns Balance in MIST as string, or null if failed
  */
 export function refreshSuiBalance(
-  targetAddress?: string,
-  options?: RefreshBalanceOptions
+	targetAddress?: string,
+	options?: RefreshBalanceOptions
 ): Promise<string | null>;
 
 /**
@@ -355,7 +380,7 @@ export function initWalletDiscovery(): void;
  * @returns Unsubscribe function
  */
 export function subscribeWalletDiscovery(
-  callback: (adapters: any[], wallets: SuiWallet[]) => void
+	callback: (adapters: any[], wallets: SuiWallet[]) => void
 ): () => void;
 
 /**
@@ -370,5 +395,3 @@ export function setModuleWalletDiscovery(adapters: any[], wallets: SuiWallet[]):
  */
 declare const SuiModule: Component<SuiModuleProps>;
 export default SuiModule;
-
-
