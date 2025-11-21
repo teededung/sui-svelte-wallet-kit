@@ -17,7 +17,7 @@ A Svelte 5 wallet kit for the Sui blockchain. Ship wallet connection, multi‑ac
 ### Installation
 
 ```bash
-yarn add sui-svelte-wallet-kit
+pnpm add sui-svelte-wallet-kit
 # or
 npm install sui-svelte-wallet-kit
 ```
@@ -25,7 +25,7 @@ npm install sui-svelte-wallet-kit
 Peer dependency:
 
 ```bash
-yarn add svelte@^5.0.0
+pnpm add svelte@^5.0.0
 ```
 
 ### Quick Start
@@ -491,13 +491,13 @@ Ensure your `tsconfig.json` includes:
 
 ```bash
 # Install deps
-yarn install
+pnpm i
 
 # Build the package
-yarn run prepack
+pnpm run prepack
 
 # Lint package exports
-yarn run lint:package
+pnpm run lint:package
 
 # Optional sanity check before publishing
 ./scripts/publish-check.sh
