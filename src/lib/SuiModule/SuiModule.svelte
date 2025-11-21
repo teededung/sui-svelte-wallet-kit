@@ -275,6 +275,7 @@
 		} catch (_) {
 			account.setAccount({
 				...account.value,
+				address: account.value.address,
 				chains: chains || account.value.chains
 			});
 			return;
@@ -357,18 +358,26 @@
 
 	// Fetch SuiNS names only for the active account
 	const refreshSuiNamesForActive = async () => {
-		_suiNamesLoading = true;
-		_suiNames = [];
-
 		if (!account.value?.address) {
 			_suiNamesLoading = false;
 			return;
 		}
 
+		const activeAddr = account.value.address;
+		
+		// Keep cached value while loading
+		const cachedNames = _suiNamesByAddress[activeAddr];
+		if (Array.isArray(cachedNames)) {
+			_suiNames = cachedNames;
+		} else {
+			_suiNames = [];
+		}
+		
+		_suiNamesLoading = true;
+
 		try {
 			const chainId = account.value?.chains?.[0] || getDefaultChain();
 			const client = getSuiClient(chainId);
-			const activeAddr = account.value.address;
 			const names = await resolveAddressToSuiNSNames(client, activeAddr);
 			_suiNames = Array.isArray(names) ? names : [];
 			_suiNamesByAddress = { ..._suiNamesByAddress, [activeAddr]: _suiNames };
@@ -507,6 +516,7 @@
 			// As a last resort, do a shallow copy without losing essential fields
 			account.setAccount({
 				...account.value,
+				address: account.value.address,
 				chains: account.value.chains,
 				label: name || undefined
 			});
@@ -643,6 +653,13 @@
 					? nextAccount.chains[0]
 					: getDefaultChain()
 		});
+		
+		// Update _suiNames immediately from cache if available
+		const cachedNames = _suiNamesByAddress[nextAccount.address];
+		if (Array.isArray(cachedNames)) {
+			_suiNames = cachedNames;
+		}
+		
 		return true;
 	};
 

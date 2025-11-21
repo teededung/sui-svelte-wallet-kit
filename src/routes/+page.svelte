@@ -354,7 +354,6 @@
 				</div>
 			{/if}
 			{#if account}
-				{@const account = useCurrentAccount()}
 				<div class="balance-box">
 					<h3>SUI Balance</h3>
 
