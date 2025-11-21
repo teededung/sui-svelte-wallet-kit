@@ -132,14 +132,10 @@ export interface WalletChangePayload {
 
 /**
  * Wallet with installation status
+ * Extends Wallet from @wallet-standard/core with additional metadata
  */
-export interface WalletWithStatus {
+export interface WalletWithStatus extends Partial<Wallet> {
 	name: string;
-	version?: string;
-	icon?: string | { light: string; dark: string };
-	chains?: readonly `${string}:${string}`[];
-	features?: Record<string, unknown>;
-	accounts?: readonly unknown[];
 	installed?: boolean;
 	displayName?: string;
 	originalName?: string;
@@ -161,19 +157,19 @@ export interface ModalResponse {
  */
 export interface SwitchWalletOptions {
 	onSelection?: (payload: {
-		wallet: Wallet | WalletWithStatus;
+		wallet: WalletWithStatus;
 		installed: boolean;
 		connected: boolean;
 	}) => void;
 	shouldConnect?: (context: {
-		selectedWallet: Wallet | WalletWithStatus;
-		currentWallet?: Wallet | WalletWithStatus;
+		selectedWallet: WalletWithStatus;
+		currentWallet?: WalletWithStatus;
 	}) => boolean;
 	onBeforeDisconnect?: (
-		currentWallet?: Wallet | WalletWithStatus,
-		selectedWallet?: Wallet | WalletWithStatus
+		currentWallet?: WalletWithStatus,
+		selectedWallet?: WalletWithStatus
 	) => void;
-	onConnected?: (wallet?: Wallet | WalletWithStatus) => void;
+	onConnected?: (wallet?: WalletWithStatus) => void;
 	onCancel?: () => void;
 }
 
@@ -207,25 +203,23 @@ export interface EnokiRegistrationOptions {
 
 /**
  * Sui account representation
+ * Compatible with WalletAccount from @wallet-standard/core
  */
-export interface SuiAccount {
-	address: string;
-	label?: string;
-	chains?: string[];
-	publicKey?: Uint8Array;
+export interface SuiAccount extends WalletAccount {
 	[key: string]: any;
 }
 
 /**
  * Wallet representation
+ * Compatible with Wallet from @wallet-standard/core
  */
-export interface SuiWallet {
+export interface SuiWallet extends Partial<Wallet> {
 	name: string;
 	iconUrl?: string;
-	adapter?: any;
 	installed?: boolean;
 	displayName?: string;
 	originalName?: string;
+	adapter?: any;
 	[key: string]: any;
 }
 

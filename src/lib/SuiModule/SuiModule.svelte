@@ -8,7 +8,7 @@
 	import ConnectModal from '../ConnectModal/ConnectModal.svelte';
 	import { SuiClient, getFullnodeUrl } from '@mysten/sui/client';
 	import { getWallets } from '@wallet-standard/core';
-	import type { Wallet, WalletAccount } from '@wallet-standard/core';
+	import type { Wallet } from '@wallet-standard/core';
 	import { registerEnokiWallets } from '@mysten/enoki';
 	import type {
 		SuiWalletAdapter,
@@ -19,20 +19,22 @@
 		WalletWithStatus,
 		ModalResponse,
 		SwitchWalletOptions,
-		SuiNetwork
+		SuiNetwork,
+
+		SuiAccount
+
 	} from './types';
 
 	let walletAdapter = $state<SuiWalletAdapter | undefined>();
 	let status = $state(ConnectionStatus.DISCONNECTED);
-	let _account = $state<WalletAccount | undefined>();
-	let _wallet = $state<Wallet | WalletWithStatus | undefined>();
+	let _account = $state<SuiAccount | undefined>();
+	let _wallet = $state<WalletWithStatus | undefined>();
 	let _suiNames = $state<string[]>([]);
 	let _suiNamesLoading = $state(false);
 	let _suiNamesByAddress = $state<Record<string, string[]>>({});
 	let _suiBalanceByAddress = $state<Record<string, string>>({});
 	let _suiBalanceLoading = $state(false);
 	let _lastRefreshKey = $state('');
-	let _lastAccountsKey = $state('');
 	let _suiNSInternalUpdate = $state(false);
 	let _suiNSPrefetched = $state(false);
 	let _walletEventsOff = $state<(() => void) | undefined>();
@@ -42,7 +44,7 @@
 	let _balanceFetchedAtByKey = $state<Record<string, number>>({}); // key: owner|chain -> timestamp
 	let _balanceCacheTTLms = $state(2000); // default cache TTL for balance
 	let _balanceInflightByKey: Record<string, Promise<string | null> | undefined> = {}; // key -> Promise
-	let _accountsSnapshot = $state<WalletAccount[]>([]);
+	let _accountsSnapshot = $state<SuiAccount[]>([]);
 	let connectModal: any = $state();
 	export let getConnectModal = () => connectModal;
 	let _onConnect = $state(() => {});
@@ -250,19 +252,19 @@
 		return 'sui:mainnet';
 	};
 
-	const isSuiAccount = (acc: unknown): acc is WalletAccount =>
+	const isSuiAccount = (acc: unknown): acc is SuiAccount =>
 		typeof acc === 'object' &&
 		acc !== null &&
 		'chains' in acc &&
-		Array.isArray((acc as WalletAccount).chains) &&
-		(acc as WalletAccount).chains.some((c) => typeof c === 'string' && c.startsWith('sui:'));
+		Array.isArray((acc as SuiAccount).chains) &&
+		(acc as SuiAccount).chains.some((c) => typeof c === 'string' && c.startsWith('sui:'));
 
 	const setAccountChainsInPlace = (chains: readonly `${string}:${string}`[]): void => {
 		if (!account.value) return;
 		try {
 			const desc = Object.getOwnPropertyDescriptor(account.value, 'chains');
 			if (desc && desc.writable) {
-				(account.value as WalletAccount & { chains: readonly `${string}:${string}`[] }).chains =
+				(account.value as SuiAccount & { chains: readonly `${string}:${string}`[] }).chains =
 					chains || account.value.chains;
 			} else {
 				Object.defineProperty(account.value, 'chains', {
@@ -503,7 +505,7 @@
 		try {
 			const desc = Object.getOwnPropertyDescriptor(account.value, 'label');
 			if (desc && desc.writable) {
-				(account.value as WalletAccount & { label?: string }).label = name || undefined;
+				(account.value as SuiAccount & { label?: string }).label = name || undefined;
 			} else {
 				Object.defineProperty(account.value, 'label', {
 					value: name || undefined,
@@ -542,10 +544,10 @@
 
 	// Internal account management (not exported)
 	const account = {
-		get value(): WalletAccount | undefined {
+		get value(): SuiAccount | undefined {
 			return _account;
 		},
-		setAccount(account: WalletAccount | undefined): void {
+		setAccount(account: SuiAccount | undefined): void {
 			_account = account;
 		},
 		removeAccount(): void {
@@ -626,11 +628,11 @@
 		}
 	};
 
-	export const switchAccount = (selector: number | string | WalletAccount): boolean => {
+	export const switchAccount = (selector: number | string | SuiAccount): boolean => {
 		ensureCallable();
 		const list = Array.isArray(_accountsSnapshot) ? _accountsSnapshot : [];
 
-		let nextAccount: WalletAccount | undefined = undefined;
+		let nextAccount: SuiAccount | undefined = undefined;
 		if (typeof selector === 'number') {
 			nextAccount = list[selector];
 		} else if (typeof selector === 'string') {
@@ -670,7 +672,7 @@
 		return {
 			...base,
 			name: _wallet?.name ?? '',
-			iconUrl: (_wallet as any)?.iconUrl ?? _wallet?.icon ?? '',
+			iconUrl: _wallet?.iconUrl ?? _wallet?.icon ?? '',
 			connectionStatus: status
 		};
 	};
@@ -711,7 +713,7 @@
 		}
 	};
 
-	export const connect = async (wallet: Wallet | WalletWithStatus): Promise<void> => {
+	export const connect = async (wallet: WalletWithStatus): Promise<void> => {
 		walletAdapter = (wallet as WalletWithStatus)?.adapter;
 		if (walletAdapter) {
 			status = ConnectionStatus.CONNECTING;
