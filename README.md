@@ -209,7 +209,7 @@ Exports from `sui-svelte-wallet-kit`:
 - Wallet info: `useCurrentWallet()`, `lastWalletSelection`
 - Accounts: `useCurrentAccount()`, `useAccounts()`, `activeAccountIndex`, `switchAccount(selector)`, `setAccountLabel(name)`, `accountLoading`
 - SuiNS: `suiNames`, `suiNamesLoading`, `suiNamesByAddress`
-- Balance: `suiBalance`, `suiBalanceLoading`, `suiBalanceByAddress`, `refreshSuiBalance(address?, { force?: boolean })`
+- Balance: `suiBalance`, `suiBalanceLoading`, `suiBalanceByAddress`, `refreshSuiBalance(address, options?)`
 - SuiClient: `useSuiClient()`
 - Discovery: `walletAdapters`, `availableWallets`
 - Enoki/zkLogin: `isZkLoginWallet()`, `getZkLoginInfo()`
@@ -456,7 +456,7 @@ All reactive stores and functions are fully typed:
 **Options Types:**
 
 - `SwitchWalletOptions` - Options for `switchWallet()` with callbacks
-- `RefreshBalanceOptions` - Options for `refreshSuiBalance()` with force and TTL
+- `RefreshBalanceOptions` - Options for `refreshSuiBalance(address, options?)` with force and TTL
 
 **Store Types:**
 

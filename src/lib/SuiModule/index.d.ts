@@ -1,7 +1,9 @@
-// Main component
+// Type definitions for SuiModule exports
 export { default as SuiModule } from './SuiModule.svelte';
 
-// Re-export all functions and stores from the component
+export * from './types';
+
+// Re-export function and store types
 export {
 	useCurrentAccount,
 	useAccounts,
@@ -36,34 +38,3 @@ export {
 	subscribeWalletDiscovery,
 	setModuleWalletDiscovery
 } from './SuiModule.svelte';
-
-// Re-export all types
-export type {
-	SuiWalletAdapter,
-	WalletConfig,
-	ZkLoginGoogleConfig,
-	ConnectionData,
-	WalletChangePayload,
-	WalletWithStatus,
-	ModalResponse,
-	SwitchWalletOptions,
-	RefreshBalanceOptions,
-	SuiNetwork,
-	SignAndExecuteTransactionParams,
-	SignAndExecuteTransactionBlockParams,
-	SignMessageParams,
-	SignPersonalMessageParams,
-	SignMessageResult,
-	GoogleProviderOptions,
-	EnokiRegistrationOptions,
-	SuiAccount,
-	SuiWallet,
-	WalletSelectionPayload,
-	ConnectionResult,
-	ZkLoginInfo,
-	ReadableStore,
-	AccountStore,
-	SuiNamesStore,
-	LastWalletSelectionStore,
-	SuiModuleProps
-} from './types';
