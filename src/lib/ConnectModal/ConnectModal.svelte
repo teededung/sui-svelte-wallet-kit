@@ -1,5 +1,5 @@
 <script module lang="ts">
-	import type { SuiWallet, ZkLoginGoogleConfig } from '../SuiModule/SuiModule.svelte';
+	import type { SuiWallet, ZkLoginGoogleConfig } from '../SuiModule/types';
 
 	interface NotInstalledSelection {
 		wallet: SuiWallet;

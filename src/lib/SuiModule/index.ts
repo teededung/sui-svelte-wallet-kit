@@ -55,11 +55,7 @@ export type {
 	SignPersonalMessageParams,
 	SignMessageResult,
 	GoogleProviderOptions,
-	EnokiRegistrationOptions
-} from './types';
-
-// Re-export component types
-export type {
+	EnokiRegistrationOptions,
 	SuiAccount,
 	SuiWallet,
 	WalletSelectionPayload,
@@ -70,4 +66,4 @@ export type {
 	SuiNamesStore,
 	LastWalletSelectionStore,
 	SuiModuleProps
-} from './SuiModule.svelte.d.ts';
+} from './types';

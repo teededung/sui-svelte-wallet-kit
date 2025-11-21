@@ -204,3 +204,103 @@ export interface EnokiRegistrationOptions {
 		google: GoogleProviderOptions;
 	};
 }
+
+/**
+ * Sui account representation
+ */
+export interface SuiAccount {
+	address: string;
+	label?: string;
+	chains?: string[];
+	publicKey?: Uint8Array;
+	[key: string]: any;
+}
+
+/**
+ * Wallet representation
+ */
+export interface SuiWallet {
+	name: string;
+	iconUrl?: string;
+	adapter?: any;
+	installed?: boolean;
+	displayName?: string;
+	originalName?: string;
+	[key: string]: any;
+}
+
+/**
+ * Wallet selection result
+ */
+export interface WalletSelectionPayload {
+	wallet: SuiWallet;
+	installed: boolean;
+}
+
+/**
+ * Connection result
+ */
+export interface ConnectionResult {
+	wallet?: SuiWallet;
+	installed: boolean;
+	connected: boolean;
+	cancelled?: boolean;
+	alreadyConnected?: boolean;
+	skipped?: boolean;
+	started?: boolean;
+	error?: string;
+}
+
+/**
+ * zkLogin session info
+ */
+export interface ZkLoginInfo {
+	session?: any;
+	metadata?: {
+		provider?: string;
+		[key: string]: any;
+	};
+}
+
+/**
+ * Reactive store with value getter
+ */
+export interface ReadableStore<T> {
+	readonly value: T;
+}
+
+/**
+ * Account store with mutation methods
+ */
+export interface AccountStore extends ReadableStore<SuiAccount | undefined> {
+	setAccount(account: SuiAccount | undefined): void;
+	removeAccount(): void;
+}
+
+/**
+ * SuiNames store with clear method
+ */
+export interface SuiNamesStore extends ReadableStore<string[]> {
+	clear(): void;
+}
+
+/**
+ * Last wallet selection store with clear method
+ */
+export interface LastWalletSelectionStore
+	extends ReadableStore<WalletSelectionPayload | undefined> {
+	clear(): void;
+}
+
+/**
+ * SuiModule component props
+ */
+export interface SuiModuleProps {
+	onConnect?: () => void;
+	autoConnect?: boolean;
+	autoSuiNS?: boolean;
+	autoSuiBalance?: boolean;
+	walletConfig?: WalletConfig;
+	zkLoginGoogle?: ZkLoginGoogleConfig | null;
+	children?: any;
+}
