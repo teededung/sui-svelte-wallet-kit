@@ -1338,13 +1338,13 @@
 
 <script lang="ts">
 	const {
-		onConnect,
+		onConnect = undefined,
 		autoConnect = false,
 		autoSuiNS = true,
 		autoSuiBalance = true,
 		walletConfig = {},
 		zkLoginGoogle = null,
-		children
+		children = undefined
 	} = $props();
 	if (onConnect) {
 		_onConnect = onConnect;
