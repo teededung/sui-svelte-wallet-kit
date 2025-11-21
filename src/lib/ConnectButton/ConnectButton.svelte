@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { connectWithModal, disconnect, useCurrentAccount } from '$lib/SuiModule';
-	import type { WalletSelectionPayload } from '$lib/SuiModule';
+	import { connectWithModal, disconnect, useCurrentAccount } from '../SuiModule';
+	import type { WalletSelectionPayload } from '../SuiModule/types';
 
 	interface Props {
 		class?: string;
