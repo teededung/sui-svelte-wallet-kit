@@ -1361,28 +1361,63 @@
 </script>
 
 <script lang="ts">
-	const {
-		onConnect = undefined,
-		autoConnect = false,
-		autoSuiNS = true,
-		autoSuiBalance = true,
-		walletConfig = {},
-		zkLoginGoogle = null,
-		children = undefined
-	} = $props();
-	if (onConnect) {
-		_onConnect = onConnect;
-	}
-	_autoConnect = autoConnect;
-	_autoFetchSuiNS = !!autoSuiNS;
-	_autoFetchBalance = !!autoSuiBalance;
-	_walletConfig = walletConfig || {};
-	_zkLoginGoogle = zkLoginGoogle || null;
+	const props = $props<{
+		onConnect?: () => void;
+		autoConnect?: boolean;
+		autoSuiNS?: boolean;
+		autoSuiBalance?: boolean;
+		walletConfig?: WalletConfig;
+		zkLoginGoogle?: ZkLoginGoogleConfig | null;
+		children?: import('svelte').Snippet;
+	}>();
+
+	// Track previous zkLoginGoogle key to detect actual config changes for probe reset
+	let _prevZkLoginGoogleKey: string | null = null;
+
+	$effect(() => {
+		if (props.onConnect) {
+			_onConnect = props.onConnect;
+		}
+		_autoConnect = props.autoConnect ?? false;
+		_autoFetchSuiNS = !!(props.autoSuiNS ?? true);
+		_autoFetchBalance = !!(props.autoSuiBalance ?? true);
+		_walletConfig = props.walletConfig || {};
+		_zkLoginGoogle = props.zkLoginGoogle || null;
+
+		// Only reset probe state if zkLoginGoogle config actually changed
+		const currentKey = props.zkLoginGoogle
+			? `${props.zkLoginGoogle.apiKey}-${props.zkLoginGoogle.googleClientId}`
+			: null;
+		if (currentKey !== _prevZkLoginGoogleKey) {
+			_prevZkLoginGoogleKey = currentKey;
+			// Reset probe state to allow re-validation on prop change
+			_enokiProbeDone = false;
+			_enokiKeyValid = undefined;
+		}
+	});
 
 	// Mirror discovery to instance state for reactive UI updates
 	let _discoveredAdapters = $state<SuiWalletAdapter[]>([]);
 	let _availableWalletsState = $state<WalletWithStatus[]>([]);
 	let _availableWalletsVisible = $state<WalletWithStatus[]>([]);
+
+	// Track if Enoki wallets have been registered for current config
+	let _enokiRegistered = false;
+
+	// Register Enoki wallets when zkLoginGoogle config is available
+	$effect(() => {
+		if (_zkLoginGoogle && !_enokiRegistered && isBrowser) {
+			_enokiRegistered = true;
+			const cfg = getConfiguredNetwork() || 'mainnet';
+			// This will trigger registerEnokiWallets inside getSuiClient
+			getSuiClient(`sui:${cfg}`);
+			// Refresh discovery to pick up newly registered Enoki wallets
+			setTimeout(() => {
+				_discoveryAttempt += 1;
+				refreshDiscoverySnapshot(_discoveryAttempt);
+			}, 100);
+		}
+	});
 
 	$effect(() => {
 		// Start discovery after mount; subscribe for updates
@@ -1401,15 +1436,6 @@
 	$effect.pre(() => {
 		// Start discovery after mount; idempotent
 		initWalletDiscovery();
-	});
-
-	$effect(() => {
-		// Update internal config when props change
-		_walletConfig = walletConfig || {};
-		_zkLoginGoogle = zkLoginGoogle || null;
-		// Reset probe state to allow re-validation on prop change
-		_enokiProbeDone = false;
-		_enokiKeyValid = undefined;
 	});
 
 	// Filter visible wallets based on zkLoginGoogle option and key validity
@@ -1479,4 +1505,4 @@
 	}}
 />
 
-{@render children()}
+{@render props.children?.()}
