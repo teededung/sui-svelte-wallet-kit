@@ -22,6 +22,8 @@ export {
 	canSignMessage,
 	isZkLoginWallet,
 	getZkLoginInfo,
+	isPasskeyWallet,
+	usePasskeyAccount,
 	suiNames,
 	suiNamesLoading,
 	suiNamesByAddress,

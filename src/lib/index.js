@@ -20,6 +20,8 @@ export {
 	canSignMessage,
 	isZkLoginWallet,
 	getZkLoginInfo,
+	isPasskeyWallet,
+	usePasskeyAccount,
 	suiNames,
 	suiNamesLoading,
 	suiNamesByAddress,
@@ -36,3 +38,21 @@ export {
 	initWalletDiscovery,
 	useSuiClient
 } from './SuiModule/index.js';
+
+// Passkey exports
+export {
+	PasskeyService,
+	PasskeyError,
+	PasskeyErrorCode,
+	LocalStorageCredentialStorage,
+	createEmptyStorage,
+	addCredential,
+	findCredentialByAddress,
+	findCredentialById,
+	findCredentialsByRpId,
+	removeCredential,
+	updateLastUsed
+} from './PasskeyService/index.js';
+
+// Wallet adapters
+export { PasskeyWalletAdapter, createPasskeyWalletAdapter } from './adapters/index.js';
