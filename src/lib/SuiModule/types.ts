@@ -281,9 +281,20 @@ export interface SuiNamesStore extends ReadableStore<string[]> {
 /**
  * Last wallet selection store with clear method
  */
-export interface LastWalletSelectionStore
-	extends ReadableStore<WalletSelectionPayload | undefined> {
+export interface LastWalletSelectionStore extends ReadableStore<
+	WalletSelectionPayload | undefined
+> {
 	clear(): void;
+}
+
+/**
+ * Passkey configuration for WebAuthn-based wallet
+ */
+export interface PasskeyConfig {
+	rpId: string;
+	rpName: string;
+	authenticatorAttachment?: 'platform' | 'cross-platform';
+	timeout?: number;
 }
 
 /**
@@ -296,5 +307,6 @@ export interface SuiModuleProps {
 	autoSuiBalance?: boolean;
 	walletConfig?: WalletConfig;
 	zkLoginGoogle?: ZkLoginGoogleConfig | null;
+	passkey?: PasskeyConfig | null;
 	children?: any;
 }

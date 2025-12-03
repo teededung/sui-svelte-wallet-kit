@@ -12,6 +12,7 @@
 		SuiWalletAdapter,
 		WalletConfig,
 		ZkLoginGoogleConfig,
+		PasskeyConfig,
 		ConnectionData,
 		WalletChangePayload,
 		WalletWithStatus,
@@ -20,6 +21,8 @@
 		SuiNetwork,
 		SuiAccount
 	} from './types';
+	import { PasskeyService } from '../PasskeyService/index.js';
+	import { PasskeyWalletAdapter } from '../adapters/PasskeyWalletAdapter.js';
 	import ConnectModal from '../ConnectModal/ConnectModal.svelte';
 
 	let walletAdapter = $state<SuiWalletAdapter | undefined>();
@@ -51,6 +54,8 @@
 	let _zkLoginGoogle = $state<ZkLoginGoogleConfig | null>(null);
 	let _enokiProbeDone = $state(false);
 	let _enokiKeyValid = $state<boolean | undefined>(undefined);
+	let _passkeyConfig = $state<PasskeyConfig | null>(null);
+	let _passkeyAdapter: PasskeyWalletAdapter | null = null;
 
 	const STORAGE_KEY = 'sui-module-connection';
 
@@ -371,6 +376,24 @@
 		const wallet = availableWallets.find((w) => w.name === connectionData.walletName);
 		// Only connect if the wallet is found and currently installed
 		if (wallet && wallet.installed) {
+			// For Passkey wallet, use silent connect to avoid prompting on page refresh
+			if (wallet.name === 'Passkey' && _passkeyAdapter && 'silentConnect' in _passkeyAdapter) {
+				const success = await (_passkeyAdapter as any).silentConnect();
+				if (success) {
+					// Restore connection state without prompting
+					_wallet = wallet;
+					walletAdapter = _passkeyAdapter as any; // Set walletAdapter for canSignMessage() etc.
+					_accountsSnapshot = [..._passkeyAdapter.accounts];
+					account.setAccount(_accountsSnapshot[0]);
+					status = ConnectionStatus.CONNECTED;
+					// console.log('[SuiModule] Passkey auto-connect successful (silent)');
+					return;
+				}
+				// If silent connect fails, don't prompt - just skip auto-connect
+				// console.log('[SuiModule] Passkey silent connect failed, skipping auto-connect');
+				return;
+			}
+			// For other wallets, use normal connect
 			await connect(wallet);
 		}
 	};
@@ -1011,6 +1034,41 @@
 		}
 	};
 
+	// Passkey helpers
+	export const isPasskeyWallet = (): boolean => {
+		return _wallet?.name === 'Passkey' && !!_passkeyAdapter;
+	};
+
+	// Hook-style getter for passkey account (always returns object with reactive getters)
+	export const usePasskeyAccount = () => {
+		return {
+			get isPasskey() {
+				return _wallet?.name === 'Passkey' && !!_passkeyAdapter;
+			},
+			get address() {
+				if (!_passkeyAdapter || _wallet?.name !== 'Passkey') return null;
+				return _passkeyAdapter.accounts?.[0]?.address ?? null;
+			},
+			get publicKey() {
+				if (!_passkeyAdapter || _wallet?.name !== 'Passkey') return null;
+				return _passkeyAdapter.accounts?.[0]?.publicKey ?? null;
+			},
+			get credentialId() {
+				if (!_passkeyAdapter || _wallet?.name !== 'Passkey') return null;
+				const acc = _passkeyAdapter.accounts?.[0];
+				return (acc as any)?.credentialId ?? null;
+			},
+			async getCredential() {
+				if (!_passkeyAdapter || _wallet?.name !== 'Passkey') return null;
+				const feat = _passkeyAdapter.features?.['passkey:getCredential'];
+				if (feat && typeof feat.getCredential === 'function') {
+					return await feat.getCredential();
+				}
+				return null;
+			}
+		};
+	};
+
 	// zkLogin helpers (Enoki)
 	export const isZkLoginWallet = (): boolean => {
 		return !!walletAdapter?.features?.['enoki:getSession'];
@@ -1368,6 +1426,7 @@
 		autoSuiBalance?: boolean;
 		walletConfig?: WalletConfig;
 		zkLoginGoogle?: ZkLoginGoogleConfig | null;
+		passkey?: PasskeyConfig | null;
 		children?: import('svelte').Snippet;
 	}>();
 
@@ -1383,6 +1442,7 @@
 		_autoFetchBalance = !!(props.autoSuiBalance ?? true);
 		_walletConfig = props.walletConfig || {};
 		_zkLoginGoogle = props.zkLoginGoogle || null;
+		_passkeyConfig = props.passkey || null;
 
 		// Only reset probe state if zkLoginGoogle config actually changed
 		const currentKey = props.zkLoginGoogle
@@ -1419,6 +1479,57 @@
 		}
 	});
 
+	// Track if Passkey wallet has been registered for current config
+	let _passkeyRegistered = false;
+
+	// Track if auto-connect has been attempted (to prevent multiple attempts)
+	let _autoConnectAttempted = false;
+
+	// Register Passkey wallet when config is available and WebAuthn is supported
+	$effect(() => {
+		if (_passkeyConfig && !_passkeyRegistered && isBrowser) {
+			// Check if WebAuthn is supported
+			if (!PasskeyService.isSupported()) {
+				console.warn(
+					'[SuiModule] WebAuthn is not supported in this browser. Passkey wallet disabled.'
+				);
+				return;
+			}
+
+			// Validate config
+			if (!_passkeyConfig.rpId || !_passkeyConfig.rpName) {
+				console.error('[SuiModule] Passkey config requires rpId and rpName.');
+				return;
+			}
+
+			_passkeyRegistered = true;
+
+			// Create PasskeyWalletAdapter
+			const cfg = getConfiguredNetwork() || 'mainnet';
+			_passkeyAdapter = new PasskeyWalletAdapter({
+				rpId: _passkeyConfig.rpId,
+				rpName: _passkeyConfig.rpName,
+				authenticatorAttachment: _passkeyConfig.authenticatorAttachment,
+				timeout: _passkeyConfig.timeout,
+				network: cfg
+			});
+
+			// Register the adapter with wallet discovery
+			try {
+				const wallets = getWallets();
+				wallets.register(_passkeyAdapter as any);
+			} catch (err) {
+				console.error('[SuiModule] Failed to register Passkey wallet:', err);
+			}
+
+			// Refresh discovery to pick up newly registered Passkey wallet
+			setTimeout(() => {
+				_discoveryAttempt += 1;
+				refreshDiscoverySnapshot(_discoveryAttempt);
+			}, 100);
+		}
+	});
+
 	$effect(() => {
 		// Start discovery after mount; subscribe for updates
 		const off = subscribeWalletDiscovery((adapters, wallets) => {
@@ -1438,15 +1549,21 @@
 		initWalletDiscovery();
 	});
 
-	// Filter visible wallets based on zkLoginGoogle option and key validity
+	// Filter visible wallets based on zkLoginGoogle and passkey options
 	$effect(() => {
 		const wallets = Array.isArray(_availableWalletsState) ? _availableWalletsState : [];
 		const canShowGoogle =
 			!!(_zkLoginGoogle && _zkLoginGoogle.apiKey && _zkLoginGoogle.googleClientId) &&
 			_enokiKeyValid !== false;
-		_availableWalletsVisible = canShowGoogle
-			? wallets
-			: wallets.filter((w) => w?.name !== 'Sign in with Google');
+		const canShowPasskey =
+			!!(_passkeyConfig && _passkeyConfig.rpId && _passkeyConfig.rpName) &&
+			PasskeyService.isSupported();
+
+		_availableWalletsVisible = wallets.filter((w) => {
+			if (w?.name === 'Sign in with Google' && !canShowGoogle) return false;
+			if (w?.name === 'Passkey' && !canShowPasskey) return false;
+			return true;
+		});
 	});
 
 	// Auto-connect wallet when conditions are met
@@ -1454,12 +1571,16 @@
 	$effect(() => {
 		// Skip if auto-connect feature is disabled
 		if (!_autoConnect) return;
+		// Skip if already attempted auto-connect (prevent multiple attempts)
+		if (_autoConnectAttempted) return;
 		// Skip if user is already connected (account exists)
 		if (account.value) return;
 		// Skip if no wallets are available yet
 		if (!Array.isArray(_availableWalletsState) || _availableWalletsState.length === 0) return;
 		// Skip if a connection attempt is already in progress
 		if (status === ConnectionStatus.CONNECTING) return;
+		// Mark as attempted before proceeding
+		_autoConnectAttempted = true;
 		// All conditions met, proceed with auto-connect
 		autoConnectWallet();
 	});
