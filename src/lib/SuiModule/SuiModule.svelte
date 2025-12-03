@@ -5,10 +5,8 @@
 		WalletRadar,
 		resolveAddressToSuiNSNames
 	} from '@suiet/wallet-sdk';
-	import ConnectModal from '../ConnectModal/ConnectModal.svelte';
 	import { SuiClient, getFullnodeUrl } from '@mysten/sui/client';
-	import { getWallets } from '@wallet-standard/core';
-	import type { Wallet } from '@wallet-standard/core';
+	import { getWallets, type Wallet } from '@wallet-standard/core';
 	import { registerEnokiWallets } from '@mysten/enoki';
 	import type {
 		SuiWalletAdapter,
@@ -20,10 +18,9 @@
 		ModalResponse,
 		SwitchWalletOptions,
 		SuiNetwork,
-
 		SuiAccount
-
 	} from './types';
+	import ConnectModal from '../ConnectModal/ConnectModal.svelte';
 
 	let walletAdapter = $state<SuiWalletAdapter | undefined>();
 	let status = $state(ConnectionStatus.DISCONNECTED);
@@ -209,9 +206,14 @@
 		);
 	};
 
+	// Retrieve saved connection data from localStorage
+	// Returns the connection data object if found, or null if localStorage is unavailable or no data exists
 	const getConnectionData = (): ConnectionData | null => {
+		// Return null if localStorage is not available in this environment
 		if (!hasLocalStorage()) return null;
+		// Get the stored connection data string from localStorage
 		const data = window.localStorage.getItem(STORAGE_KEY);
+		// Parse and return the data if it exists, otherwise return null
 		return data ? (JSON.parse(data) as ConnectionData) : null;
 	};
 
@@ -259,14 +261,20 @@
 		Array.isArray((acc as SuiAccount).chains) &&
 		(acc as SuiAccount).chains.some((c) => typeof c === 'string' && c.startsWith('sui:'));
 
+	// Update the chains property of the current account in-place (mutation)
+	// This attempts to mutate the account object directly for performance, with fallback to setAccount if mutation fails
 	const setAccountChainsInPlace = (chains: readonly `${string}:${string}`[]): void => {
+		// Skip if no account is currently set
 		if (!account.value) return;
 		try {
+			// Check if the 'chains' property exists and is writable
 			const desc = Object.getOwnPropertyDescriptor(account.value, 'chains');
 			if (desc && desc.writable) {
+				// Property is writable, update it directly
 				(account.value as SuiAccount & { chains: readonly `${string}:${string}`[] }).chains =
 					chains || account.value.chains;
 			} else {
+				// Property is not writable or doesn't exist, define a new writable property
 				Object.defineProperty(account.value, 'chains', {
 					value: chains || account.value.chains,
 					writable: true,
@@ -275,6 +283,7 @@
 				});
 			}
 		} catch (_) {
+			// If mutation fails (e.g., object is frozen), fallback to creating a new account object
 			account.setAccount({
 				...account.value,
 				address: account.value.address,
@@ -282,6 +291,7 @@
 			});
 			return;
 		}
+		// Trigger reactivity by calling setAccount with the mutated account object
 		account.setAccount(account.value);
 	};
 
@@ -346,13 +356,20 @@
 		}
 	};
 
+	// Automatically connect to the previously used wallet if available
+	// This function attempts to restore the last wallet connection from localStorage
 	const autoConnectWallet = async () => {
+		// Skip if auto-connect feature is disabled
 		if (!_autoConnect) return;
 
+		// Retrieve saved connection data from localStorage
 		const connectionData = getConnectionData();
+		// Skip if no saved connection data or auto-connect flag is not set
 		if (!connectionData?.autoConnect) return;
 
+		// Find the wallet that was previously used by matching wallet name
 		const wallet = availableWallets.find((w) => w.name === connectionData.walletName);
+		// Only connect if the wallet is found and currently installed
 		if (wallet && wallet.installed) {
 			await connect(wallet);
 		}
@@ -366,7 +383,7 @@
 		}
 
 		const activeAddr = account.value.address;
-		
+
 		// Keep cached value while loading
 		const cachedNames = _suiNamesByAddress[activeAddr];
 		if (Array.isArray(cachedNames)) {
@@ -374,7 +391,7 @@
 		} else {
 			_suiNames = [];
 		}
-		
+
 		_suiNamesLoading = true;
 
 		try {
@@ -655,13 +672,13 @@
 					? nextAccount.chains[0]
 					: getDefaultChain()
 		});
-		
+
 		// Update _suiNames immediately from cache if available
 		const cachedNames = _suiNamesByAddress[nextAccount.address];
 		if (Array.isArray(cachedNames)) {
 			_suiNames = cachedNames;
 		}
-		
+
 		return true;
 	};
 
@@ -978,13 +995,18 @@
 		);
 	};
 
+	// Validate Enoki (zkLogin) configuration to detect suspicious or invalid credentials
+	// Returns true if the configuration appears suspicious, false otherwise
 	const isSuspiciousEnokiConfig = (apiKey: unknown, googleId: unknown): boolean => {
 		try {
 			const suspiciousApiKey = typeof apiKey === 'string' && apiKey.length < 16;
+			// Check if Google Client ID is suspicious: must end with the standard Google OAuth domain
 			const suspiciousGoogleId =
 				typeof googleId === 'string' && !googleId.endsWith('.apps.googleusercontent.com');
+			// Return true if either credential appears suspicious
 			return !!(suspiciousApiKey || suspiciousGoogleId);
 		} catch {
+			// If validation fails due to an error, assume config is valid (return false)
 			return false;
 		}
 	};
@@ -1401,11 +1423,18 @@
 			: wallets.filter((w) => w?.name !== 'Sign in with Google');
 	});
 
+	// Auto-connect wallet when conditions are met
+	// This effect monitors wallet availability and automatically connects if auto-connect is enabled
 	$effect(() => {
+		// Skip if auto-connect feature is disabled
 		if (!_autoConnect) return;
+		// Skip if user is already connected (account exists)
 		if (account.value) return;
+		// Skip if no wallets are available yet
 		if (!Array.isArray(_availableWalletsState) || _availableWalletsState.length === 0) return;
+		// Skip if a connection attempt is already in progress
 		if (status === ConnectionStatus.CONNECTING) return;
+		// All conditions met, proceed with auto-connect
 		autoConnectWallet();
 	});
 
