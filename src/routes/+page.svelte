@@ -21,6 +21,7 @@
 		refreshSuiBalance,
 		walletAdapters,
 		getZkLoginInfo,
+		usePasskeyAccount,
 		useSuiClient
 	} from '$lib';
 
@@ -39,6 +40,7 @@
 	const accounts = $derived(useAccounts());
 	const currentWallet = $derived(useCurrentWallet());
 	const suiClient = $derived(useSuiClient());
+	const passkeyAccount = $derived(usePasskeyAccount());
 
 	// State with type annotations
 	let transactionResult = $state<any>(null);
@@ -50,6 +52,7 @@
 	let message = $state<string>('Hello, Sui blockchain!');
 	let selectedAccountIndex = $state<number>(-1);
 	let zkInfo = $state<ZkLoginInfo | null>(null);
+	let passkeyCredential = $state<any>(null);
 	let ownedObjects = $state<any>(null);
 	let isLoadingObjects = $state<boolean>(false);
 	import { PUBLIC_GOOGLE_CLIENT_ID, PUBLIC_ENOKI_API_KEY } from '$env/static/public';
@@ -147,6 +150,22 @@
 		}
 	});
 
+	$effect(() => {
+		// Fetch passkey credential when passkey wallet is connected
+		if (passkeyAccount.isPasskey) {
+			passkeyAccount
+				.getCredential()
+				.then((credential: any) => {
+					passkeyCredential = credential;
+				})
+				.catch(() => {
+					passkeyCredential = null;
+				});
+		} else {
+			passkeyCredential = null;
+		}
+	});
+
 	const checkDetectedWallets = (): void => {
 		detectedAdapters = Array.isArray(walletAdapters) ? walletAdapters : [];
 	};
@@ -221,8 +240,9 @@
 	const walletConfig: WalletConfig = {
 		// Custom ordering (wallets not listed will appear after these in alphabetical order)
 		ordering: [
-			'Sign in with Google', // Then Google
-			'Slush — A Sui wallet', // Show Slush first
+			'Sign in with Google', // Show Google first
+			'Slush — A Sui wallet', // Then Slush first
+			'Passkey', // Then Passkey
 			'OKX Wallet', // Then OKX
 			'Phantom', // Then Phantom
 			'Suiet' // Then Suiet
@@ -234,12 +254,21 @@
 		googleClientId: PUBLIC_GOOGLE_CLIENT_ID,
 		network: 'testnet'
 	};
+
+	// Passkey configuration for WebAuthn-based wallet
+	// rpId should match your domain (use localhost for local development)
+	const passkeyConfig = {
+		rpId: typeof window !== 'undefined' ? window.location.hostname : 'localhost',
+		rpName: 'Sui Svelte Wallet Kit Demo',
+		authenticatorAttachment: 'cross-platform' as const // Use device biometrics (Face ID, Touch ID, Windows Hello)
+	};
 </script>
 
 <SuiModule
 	{zkLoginGoogle}
 	{walletConfig}
 	{onConnect}
+	passkey={passkeyConfig}
 	autoConnect={true}
 	autoSuiNS={true}
 	autoSuiBalance={true}
@@ -348,6 +377,25 @@
 								<pre class="zk-json">{JSON.stringify(zkInfo.session, null, 2)}</pre>
 							{:else}
 								<p>No zkLogin session info.</p>
+							{/if}
+						</div>
+					{/if}
+					{#if passkeyAccount.isPasskey}
+						<div class="passkey-box">
+							<strong>🔐 Passkey Wallet</strong>
+							<p>Connected using WebAuthn passkey (Face ID, Touch ID, or Windows Hello)</p>
+							<p><strong>RP ID:</strong> {passkeyConfig.rpId}</p>
+							{#if passkeyAccount.credentialId}
+								<p>
+									<strong>Credential ID:</strong>
+									<code class="credential-id">{passkeyAccount.credentialId}</code>
+								</p>
+							{/if}
+							{#if passkeyCredential}
+								<p>
+									<strong>Created:</strong>
+									{new Date(passkeyCredential.createdAt).toLocaleString()}
+								</p>
 							{/if}
 						</div>
 					{/if}
@@ -960,5 +1008,33 @@
 		border: 1px solid #1f2937;
 		border-radius: 8px;
 		background: #0a0f1a;
+	}
+
+	.passkey-box {
+		margin-top: 8px;
+		padding: 12px;
+		border: 1px solid rgba(16, 185, 129, 0.35);
+		border-radius: 8px;
+		background: rgba(16, 185, 129, 0.08);
+		color: #a7f3d0;
+	}
+
+	.passkey-box strong {
+		color: #34d399;
+		display: block;
+		margin-bottom: 8px;
+	}
+
+	.passkey-box p {
+		margin: 4px 0;
+		font-size: 0.9rem;
+	}
+
+	.passkey-box .credential-id {
+		font-size: 0.75rem;
+		word-break: break-all;
+		background: rgba(0, 0, 0, 0.3);
+		padding: 2px 6px;
+		border-radius: 4px;
 	}
 </style>
