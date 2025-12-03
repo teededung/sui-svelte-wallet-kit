@@ -35,7 +35,6 @@
 	let installHintEl = $state<HTMLDivElement | undefined>();
 
 	const getInstallUrlForWallet = (wallet: SuiWallet): string => {
-		console.log('getInstallUrlForWallet', wallet);
 		try {
 			const urls = wallet?.downloadUrl;
 			if (urls) {
