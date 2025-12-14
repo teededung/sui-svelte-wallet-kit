@@ -104,6 +104,8 @@ Props:
 - `autoSuiNS?: boolean` (default: `true`)
 - `autoSuiBalance?: boolean` (default: `true`)
 - `walletConfig?: { customNames?: Record<string, string>; ordering?: string[] }` (optional wallet customization)
+- `zkLoginGoogle?: ZkLoginGoogleConfig` (optional Enoki zkLogin config)
+- `passkey?: PasskeyConfig` (optional WebAuthn passkey wallet config)
 
 #### ConnectButton
 
@@ -198,6 +200,36 @@ Notes:
 - The SDK probes your API key once via `GET /v1/app` for an early validity check.
 - You can change networks by setting `zkLoginGoogle.network`. Default is: `mainnet`
 - Check browser console logs for detailed hints emitted by `SuiModule`.
+
+### Passkey Wallet (WebAuthn)
+
+Enable passwordless wallet authentication using device biometrics (Face ID, Touch ID, Windows Hello).
+
+```svelte
+<script>
+	import { SuiModule, ConnectButton } from 'sui-svelte-wallet-kit';
+
+	const passkey = {
+		rpId: window.location.hostname, // Must match your domain
+		rpName: 'My Sui App' // Display name in passkey prompts
+	};
+</script>
+
+<SuiModule {passkey} autoConnect={true}>
+	<ConnectButton />
+</SuiModule>
+```
+
+Configuration options:
+
+| Option                    | Type                           | Required | Description                            |
+| ------------------------- | ------------------------------ | -------- | -------------------------------------- |
+| `rpId`                    | string                         | Yes      | Domain name (must match actual domain) |
+| `rpName`                  | string                         | Yes      | Display name in passkey prompts        |
+| `authenticatorAttachment` | 'platform' \| 'cross-platform' | No       | Device biometrics or security keys     |
+| `icon`                    | data URL                       | No       | Custom wallet icon (base64 svg/png)    |
+
+For detailed documentation including recovery flows, technical details, and troubleshooting, see [docs/PASSKEY_INTEGRATION.md](docs/PASSKEY_INTEGRATION.md).
 
 ### API Reference
 
@@ -446,6 +478,7 @@ All reactive stores and functions are fully typed:
 - `WalletConfig` - Configuration for wallet ordering and custom names
 - `ZkLoginGoogleConfig` - Configuration for Enoki zkLogin with Google
 - `ZkLoginInfo` - zkLogin session and metadata
+- `PasskeyConfig` - Configuration for WebAuthn passkey wallet
 
 **Result Types:**
 

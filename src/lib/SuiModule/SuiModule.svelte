@@ -1,31 +1,67 @@
 <script module lang="ts">
-	import {
-		AllDefaultWallets,
-		ConnectionStatus,
-		WalletRadar,
-		resolveAddressToSuiNSNames
-	} from '@suiet/wallet-sdk';
-	import { SuiClient, getFullnodeUrl } from '@mysten/sui/client';
+	import { ConnectionStatus, resolveAddressToSuiNSNames } from '@suiet/wallet-sdk';
 	import { getWallets, type Wallet } from '@wallet-standard/core';
-	import { registerEnokiWallets } from '@mysten/enoki';
 	import type {
 		SuiWalletAdapter,
 		WalletConfig,
 		ZkLoginGoogleConfig,
-		ConnectionData,
-		WalletChangePayload,
+		PasskeyConfig,
+		MultisigModuleConfig,
+		SuiModuleMultisigConfig,
 		WalletWithStatus,
-		ModalResponse,
 		SwitchWalletOptions,
-		SuiNetwork,
 		SuiAccount
 	} from './types';
+	import {
+		multisigStore,
+		type MultisigConfig,
+		type ResolverContext
+	} from '../MultisigService/index.js';
+	import { Ed25519PublicKey } from '@mysten/sui/keypairs/ed25519';
+	import { Secp256k1PublicKey } from '@mysten/sui/keypairs/secp256k1';
+	import { Secp256r1PublicKey } from '@mysten/sui/keypairs/secp256r1';
+	import { PasskeyPublicKey } from '@mysten/sui/keypairs/passkey';
+	import { parseSerializedSignature } from '@mysten/sui/cryptography';
+	import { ZkLoginPublicIdentifier } from '@mysten/sui/zklogin';
+	import { PasskeyService } from '../PasskeyService/index.js';
 	import ConnectModal from '../ConnectModal/ConnectModal.svelte';
 
+	// Import from extracted modules
+	import {
+		updateConnectionData,
+		saveConnectionData,
+		clearConnectionData,
+		getConfiguredNetwork,
+		getDefaultChain,
+		getSuiClient,
+		isBrowser
+	} from './internal/core.js';
+	import {
+		setModuleWalletDiscovery as _setModuleWalletDiscovery,
+		subscribeWalletDiscovery as _subscribeWalletDiscovery,
+		refreshDiscoverySnapshot,
+		incrementDiscoveryAttempt
+	} from './internal/discovery.js';
+	import * as sessionModule from './internal/session.svelte.js';
+	import {
+		signAndExecuteTransaction as txSignAndExecute,
+		signTransaction as txSign,
+		signMessage as txSignMessage,
+		canSignMessage as txCanSignMessage,
+		type SessionContext
+	} from './internal/tx.js';
+	import * as integrationsModule from './internal/integrations.svelte.js';
+
+	// Core runtime state (kept in component for reactivity)
 	let walletAdapter = $state<SuiWalletAdapter | undefined>();
 	let status = $state(ConnectionStatus.DISCONNECTED);
 	let _account = $state<SuiAccount | undefined>();
 	let _wallet = $state<WalletWithStatus | undefined>();
+	let _accountsSnapshot = $state<SuiAccount[]>([]);
+	let _walletEventsOff = $state<(() => void) | undefined>();
+	let _lastWalletSelection = $state<{ wallet: Wallet; installed: boolean } | undefined>();
+
+	// Component-specific state (SuiNS, balance, UI)
 	let _suiNames = $state<string[]>([]);
 	let _suiNamesLoading = $state(false);
 	let _suiNamesByAddress = $state<Record<string, string[]>>({});
@@ -34,345 +70,102 @@
 	let _lastRefreshKey = $state('');
 	let _suiNSInternalUpdate = $state(false);
 	let _suiNSPrefetched = $state(false);
-	let _walletEventsOff = $state<(() => void) | undefined>();
 	let _autoFetchSuiNS = $state(true);
 	let _autoFetchBalance = $state(true);
 	let _lastBalanceKey = $state('');
-	let _balanceFetchedAtByKey = $state<Record<string, number>>({}); // key: owner|chain -> timestamp
-	let _balanceCacheTTLms = $state(2000); // default cache TTL for balance
-	let _balanceInflightByKey: Record<string, Promise<string | null> | undefined> = {}; // key -> Promise
-	let _accountsSnapshot = $state<SuiAccount[]>([]);
+	let _balanceFetchedAtByKey = $state<Record<string, number>>({});
+	let _balanceCacheTTLms = $state(2000);
+	let _balanceInflightByKey: Record<string, Promise<string | null> | undefined> = {};
 	let connectModal: any = $state();
 	export let getConnectModal = () => connectModal;
 	let _onConnect = $state(() => {});
 	let _autoConnect = $state(false);
-	let _lastWalletSelection = $state<{ wallet: Wallet; installed: boolean } | undefined>();
 	let _walletConfig = $state<WalletConfig>({});
 	let _zkLoginGoogle = $state<ZkLoginGoogleConfig | null>(null);
+	let _passkeyConfig = $state<PasskeyConfig | null>(null);
+	let _multisigConfig = $state<SuiModuleMultisigConfig | null>(null);
+
+	// Integration state
 	let _enokiProbeDone = $state(false);
 	let _enokiKeyValid = $state<boolean | undefined>(undefined);
+	let _enokiRegistered = $state(false);
+	let _passkeyAdapter: any = $state(null);
+	let _passkeyRegistered = $state(false);
+	let _multisigAdapter: any = $state(null);
+	let _multisigInitialized = $state(false);
+	let _multisigRegisteredKey: string | null = $state(null);
 
-	const STORAGE_KEY = 'sui-module-connection';
+	// Re-export helper functions
+	const isMultisigConfig = integrationsModule.isMultisigConfig;
+	const isLegacyMultisigConfig = integrationsModule.isLegacyMultisigConfig;
+	const isSuspiciousEnokiConfig = integrationsModule.isSuspiciousEnokiConfig;
+	const isSuiAccount = sessionModule.isSuiAccount;
 
-	// Environment guards
-	const isBrowser = typeof window !== 'undefined';
-	const hasLocalStorage = () => isBrowser && !!window.localStorage;
-
-	// Compute a safe redirect URL for OAuth providers (force root path to avoid route mismatches)
-	const getSafeRedirectUrlForOAuth = () => {
-		if (!isBrowser) return undefined;
-		try {
-			const url = new URL(window.location.href);
-			url.hash = '';
-			url.search = '';
-			url.pathname = '/';
-			return url.toString();
-		} catch {
-			return undefined;
+	// Internal account management
+	const account = {
+		get value(): SuiAccount | undefined {
+			return _account;
+		},
+		setAccount(account: SuiAccount | undefined): void {
+			_account = account;
+		},
+		removeAccount(): void {
+			_account = undefined;
 		}
 	};
 
-	// Normalize and validate absolute URL (http/https only)
-	const normalizeAbsoluteUrl = (value: unknown): string | undefined => {
-		try {
-			if (typeof value !== 'string' || value.trim().length === 0) return undefined;
-			const url = new URL(value);
-			if (url.protocol === 'http:' || url.protocol === 'https:') return url.toString();
-			return undefined;
-		} catch {
-			return undefined;
+	// Wrapper for getSuiClient that handles Enoki registration
+	const getSuiClientWithEnoki = (chainIdLike: string) => {
+		return getSuiClient(chainIdLike, {
+			zkLoginGoogle: _zkLoginGoogle,
+			onEnokiRegister: (client, network) => {
+				integrationsModule.registerEnokiWalletsCallback(client, network, _zkLoginGoogle!);
+			},
+			isSuspiciousEnokiConfig: isSuspiciousEnokiConfig
+		});
+	};
+
+	// Create session state object for passing to session functions
+	const createSessionState = () => ({
+		walletAdapter: {
+			get: () => walletAdapter,
+			set: (v: SuiWalletAdapter | undefined) => (walletAdapter = v)
+		},
+		status: { get: () => status, set: (v: ConnectionStatus) => (status = v) },
+		account,
+		wallet: { get: () => _wallet, set: (v: WalletWithStatus | undefined) => (_wallet = v) },
+		accountsSnapshot: {
+			get: () => _accountsSnapshot,
+			set: (v: SuiAccount[]) => (_accountsSnapshot = v)
+		},
+		walletEventsOff: {
+			get: () => _walletEventsOff,
+			set: (v: (() => void) | undefined) => (_walletEventsOff = v)
+		},
+		lastWalletSelection: {
+			get: () => _lastWalletSelection,
+			set: (v: { wallet: Wallet; installed: boolean } | undefined) => (_lastWalletSelection = v)
 		}
-	};
+	});
 
-	// Pick best redirect URL from provided list (prefer same-origin and root path)
-	const pickRedirectFromList = (list: unknown): string | undefined => {
-		if (!isBrowser) return undefined;
-		try {
-			const values = Array.isArray(list) ? list : [];
-			const valid = values.map((v) => normalizeAbsoluteUrl(v)).filter((v) => typeof v === 'string');
-			if (valid.length === 0) return undefined;
-			const current = new URL(window.location.href);
-			const sameOrigin = valid.filter((u) => {
-				try {
-					return new URL(u).origin === current.origin;
-				} catch {
-					return false;
-				}
-			});
-			if (sameOrigin.length > 0) {
-				const root = sameOrigin.find((u) => {
-					try {
-						return new URL(u).pathname === '/';
-					} catch {
-						return false;
-					}
-				});
-				return root || sameOrigin[0];
-			}
-			return valid[0];
-		} catch {
-			return undefined;
-		}
-	};
-
-	// Determine preferred redirect URL from config or fallback to safe root
-	const getPreferredRedirectUrlForOAuth = () => {
-		try {
-			const fromSingle = normalizeAbsoluteUrl(_zkLoginGoogle?.redirectUrl);
-			if (fromSingle) return fromSingle;
-			const fromList = pickRedirectFromList(_zkLoginGoogle?.redirectUrls);
-			if (fromList) return fromList;
-			return getSafeRedirectUrlForOAuth();
-		} catch {
-			return getSafeRedirectUrlForOAuth();
-		}
-	};
-
-	const _clientCache: Record<string, SuiClient> = {};
-	const getSuiClient = (chainIdLike: string) => {
-		const network = chainIdLike?.split?.(':')?.[1] || 'mainnet';
-		if (!_clientCache[network]) {
-			_clientCache[network] = new SuiClient({
-				url: getFullnodeUrl(network as any),
-				network
-			});
-
-			// Register Enoki wallets only when zkLoginGoogle is enabled and in browser environment
-			if (_zkLoginGoogle && isBrowser) {
-				const apiKey = _zkLoginGoogle?.apiKey;
-				const googleId = _zkLoginGoogle?.googleClientId;
-
-				// Basic validation and developer-friendly logs
-				if (!apiKey || !googleId) {
-					_enokiKeyValid = false;
-					try {
-						const missing = [!apiKey ? 'apiKey' : null, !googleId ? 'googleClientId' : null]
-							.filter(Boolean)
-							.join(', ');
-						console.error(
-							`[SuiModule] Enoki zkLogin is enabled but missing: ${missing}. Provide zkLoginGoogle={ apiKey, googleClientId }. See docs: https://docs.enoki.mystenlabs.com/ts-sdk/sign-in`
-						);
-					} catch {}
-				} else {
-					if (isSuspiciousEnokiConfig(apiKey, googleId)) {
-						_enokiKeyValid = false;
-						try {
-							console.error(
-								`[SuiModule] Enoki config looks unusual: ${
-									typeof apiKey === 'string' && apiKey.length < 16 ? 'apiKey too short; ' : ''
-								}${
-									typeof googleId === 'string' && !googleId.endsWith('.apps.googleusercontent.com')
-										? 'googleClientId should typically end with .apps.googleusercontent.com; '
-										: ''
-								}please verify`
-							);
-						} catch {}
-						// Skip registering Enoki if suspicious
-					} else {
-						try {
-							const googleProviderOptions: any = {
-								clientId: googleId
-							};
-							try {
-								const ru = getPreferredRedirectUrlForOAuth();
-								if (ru) googleProviderOptions.redirectUrl = ru;
-							} catch {}
-							registerEnokiWallets({
-								client: _clientCache[network],
-								network: network as any,
-								apiKey,
-								providers: {
-									google: googleProviderOptions
-								}
-							});
-						} catch (err) {
-							try {
-								console.error('[SuiModule] Failed to register Enoki wallets:', err);
-							} catch {}
-						}
-					}
-				}
-			}
-		}
-		return _clientCache[network];
-	};
-
-	const saveConnectionData = (walletName: string): void => {
-		if (!_autoConnect || !hasLocalStorage()) return;
-		const current = getConnectionData() || {};
-		window.localStorage.setItem(
-			STORAGE_KEY,
-			JSON.stringify({ ...current, walletName, autoConnect: true })
-		);
-	};
-
-	// Retrieve saved connection data from localStorage
-	// Returns the connection data object if found, or null if localStorage is unavailable or no data exists
-	const getConnectionData = (): ConnectionData | null => {
-		// Return null if localStorage is not available in this environment
-		if (!hasLocalStorage()) return null;
-		// Get the stored connection data string from localStorage
-		const data = window.localStorage.getItem(STORAGE_KEY);
-		// Parse and return the data if it exists, otherwise return null
-		return data ? (JSON.parse(data) as ConnectionData) : null;
-	};
-
-	const updateConnectionData = (partial: Partial<ConnectionData>): void => {
-		if (!hasLocalStorage()) return;
-		const current = getConnectionData() || {};
-		window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...partial }));
-	};
-
-	const clearConnectionData = () => {
-		if (!hasLocalStorage()) return;
-		window.localStorage.removeItem(STORAGE_KEY);
-	};
-
-	/**
-	 * Get configured network from zkLoginGoogle.network (only for zkLogin wallets)
-	 */
-	const getConfiguredNetwork = (): SuiNetwork | undefined => {
-		try {
-			const net = _zkLoginGoogle?.network;
-			if (net === 'mainnet' || net === 'testnet' || net === 'devnet') return net;
-		} catch {}
-		return undefined;
-	};
-
-	const getDefaultChain = () => {
-		// Priority 1: zkLoginGoogle.network (for zkLogin wallet consistency before/after connect)
-		const cfg = getConfiguredNetwork();
-		if (cfg) return `sui:${cfg}`;
-
-		// Priority 2: localStorage (previous session)
-		try {
-			const selected = getConnectionData()?.selectedChain;
-			if (typeof selected === 'string' && selected.startsWith('sui:')) return selected;
-		} catch {}
-
-		// Priority 3: fallback to mainnet
-		return 'sui:mainnet';
-	};
-
-	const isSuiAccount = (acc: unknown): acc is SuiAccount =>
-		typeof acc === 'object' &&
-		acc !== null &&
-		'chains' in acc &&
-		Array.isArray((acc as SuiAccount).chains) &&
-		(acc as SuiAccount).chains.some((c) => typeof c === 'string' && c.startsWith('sui:'));
-
-	// Update the chains property of the current account in-place (mutation)
-	// This attempts to mutate the account object directly for performance, with fallback to setAccount if mutation fails
+	// Wrapper functions that use session module with local state
 	const setAccountChainsInPlace = (chains: readonly `${string}:${string}`[]): void => {
-		// Skip if no account is currently set
-		if (!account.value) return;
-		try {
-			// Check if the 'chains' property exists and is writable
-			const desc = Object.getOwnPropertyDescriptor(account.value, 'chains');
-			if (desc && desc.writable) {
-				// Property is writable, update it directly
-				(account.value as SuiAccount & { chains: readonly `${string}:${string}`[] }).chains =
-					chains || account.value.chains;
-			} else {
-				// Property is not writable or doesn't exist, define a new writable property
-				Object.defineProperty(account.value, 'chains', {
-					value: chains || account.value.chains,
-					writable: true,
-					configurable: true,
-					enumerable: true
-				});
-			}
-		} catch (_) {
-			// If mutation fails (e.g., object is frozen), fallback to creating a new account object
-			account.setAccount({
-				...account.value,
-				address: account.value.address,
-				chains: chains || account.value.chains
-			});
-			return;
-		}
-		// Trigger reactivity by calling setAccount with the mutated account object
-		account.setAccount(account.value);
+		sessionModule.setAccountChainsInPlace(account, chains, _zkLoginGoogle);
 	};
 
-	const attachWalletNetworkListener = () => {
-		if (!isBrowser) return;
-		try {
-			if (typeof _walletEventsOff === 'function') {
-				_walletEventsOff();
-				_walletEventsOff = undefined;
-			}
-
-			const wallets = getWallets().get();
-			const activeAddr = account.value?.address;
-			if (!activeAddr) return;
-			const byName = wallets.find(
-				(w) => w.name === _wallet?.name && w.accounts?.some?.((a) => a.address === activeAddr)
-			);
-			const byAddr = wallets.find((w) => w.accounts?.some?.((a) => a.address === activeAddr));
-			const active = byName || byAddr;
-			if (!active) return;
-
-			const eventsFeature = active.features?.['standard:events'] as {
-				on?: (event: string, callback: (payload: WalletChangePayload) => void) => () => void;
-			};
-			if (!eventsFeature || typeof eventsFeature.on !== 'function') return;
-
-			_walletEventsOff = eventsFeature.on('change', async (payload: WalletChangePayload) => {
-				const { accounts, chains } = payload || {};
-				// Some wallets emit `chains` directly on network change
-				if (Array.isArray(chains) && chains.length > 0) {
-					setAccountChainsInPlace(chains as readonly `${string}:${string}`[]);
-					updateConnectionData({ selectedChain: chains[0] });
-					return;
-				}
-
-				// Accounts change
-				if (!Array.isArray(accounts) || accounts.length === 0) return;
-				const suiAccounts = accounts.filter(isSuiAccount);
-				if (suiAccounts.length === 0) return;
-				_accountsSnapshot = suiAccounts;
-				const lower = (s: string) => s.toLowerCase();
-				const currentAddr = lower(activeAddr);
-				const nextAccount =
-					suiAccounts.find((a) => lower(a.address) === currentAddr) || suiAccounts[0];
-				if (!nextAccount) return;
-
-				account.setAccount(nextAccount);
-				const effChains = Array.isArray(nextAccount.chains)
-					? nextAccount.chains
-					: account.value?.chains;
-				if (Array.isArray(effChains) && effChains.length > 0) {
-					setAccountChainsInPlace(effChains as readonly `${string}:${string}`[]);
-				}
-				updateConnectionData({
-					selectedAccountAddress: nextAccount.address,
-					selectedChain: Array.isArray(nextAccount?.chains) ? nextAccount.chains[0] : undefined
-				});
-				// Let reactive effects handle SuiNS and balance fetching
-			});
-		} catch (_) {
-			// ignore
-		}
+	const attachWalletNetworkListener = (): void => {
+		sessionModule.attachWalletNetworkListener(createSessionState(), _zkLoginGoogle);
 	};
 
-	// Automatically connect to the previously used wallet if available
-	// This function attempts to restore the last wallet connection from localStorage
-	const autoConnectWallet = async () => {
-		// Skip if auto-connect feature is disabled
-		if (!_autoConnect) return;
-
-		// Retrieve saved connection data from localStorage
-		const connectionData = getConnectionData();
-		// Skip if no saved connection data or auto-connect flag is not set
-		if (!connectionData?.autoConnect) return;
-
-		// Find the wallet that was previously used by matching wallet name
-		const wallet = availableWallets.find((w) => w.name === connectionData.walletName);
-		// Only connect if the wallet is found and currently installed
-		if (wallet && wallet.installed) {
-			await connect(wallet);
-		}
+	const autoConnectWallet = async (): Promise<void> => {
+		await sessionModule.autoConnectWallet(
+			_autoConnect,
+			availableWallets,
+			createSessionState(),
+			_zkLoginGoogle,
+			_onConnect,
+			_passkeyAdapter
+		);
 	};
 
 	// Fetch SuiNS names only for the active account
@@ -395,8 +188,8 @@
 		_suiNamesLoading = true;
 
 		try {
-			const chainId = account.value?.chains?.[0] || getDefaultChain();
-			const client = getSuiClient(chainId);
+			const chainId = account.value?.chains?.[0] || getDefaultChain(_zkLoginGoogle);
+			const client = getSuiClientWithEnoki(chainId);
 			const names = await resolveAddressToSuiNSNames(client, activeAddr);
 			_suiNames = Array.isArray(names) ? names : [];
 			_suiNamesByAddress = { ..._suiNamesByAddress, [activeAddr]: _suiNames };
@@ -421,19 +214,17 @@
 	) => {
 		const owner = targetAddress ?? account.value?.address;
 		if (!owner) return null;
-		const chainId = account.value?.chains?.[0] || getDefaultChain();
+		const chainId = account.value?.chains?.[0] || getDefaultChain(_zkLoginGoogle);
 		const key = `${owner}|${chainId}`;
 		const now = Date.now();
 		const lastFetchedAt = _balanceFetchedAtByKey[key] || 0;
 		const ttl = typeof options.ttlMs === 'number' ? Math.max(0, options.ttlMs) : _balanceCacheTTLms;
 		const isFresh = now - lastFetchedAt < ttl;
 
-		// Return in-flight promise if there is one (dedupe concurrent calls)
 		if (_balanceInflightByKey[key]) {
 			return _balanceInflightByKey[key];
 		}
 
-		// Respect TTL unless force is requested
 		if (!options.force && isFresh) {
 			return _suiBalanceByAddress[owner] ?? null;
 		}
@@ -442,7 +233,7 @@
 		_suiBalanceLoading = true;
 		const fetchPromise = (async () => {
 			try {
-				const client = getSuiClient(chainId);
+				const client = getSuiClientWithEnoki(chainId);
 				const res = await client.getBalance({ owner, coinType: '0x2::sui::SUI' });
 				const total = res?.totalBalance ?? '0';
 				_suiBalanceByAddress = { ..._suiBalanceByAddress, [owner]: total };
@@ -478,8 +269,8 @@
 
 		try {
 			const activeAddr = account.value.address;
-			const activeChain = account.value?.chains?.[0] || getDefaultChain();
-			const activeClient = getSuiClient(activeChain);
+			const activeChain = account.value?.chains?.[0] || getDefaultChain(_zkLoginGoogle);
+			const activeClient = getSuiClientWithEnoki(activeChain);
 			const activeNames = await resolveAddressToSuiNSNames(activeClient, activeAddr);
 			_suiNames = Array.isArray(activeNames) ? activeNames : [];
 			_suiNamesByAddress = { ..._suiNamesByAddress, [activeAddr]: _suiNames };
@@ -495,7 +286,7 @@
 			const otherAccounts = allAccounts.filter((acc) => acc?.address && acc.address !== activeAddr);
 			const results = await Promise.allSettled(
 				otherAccounts.map(async (acc) => {
-					const client = getSuiClient(acc?.chains?.[0] || activeChain);
+					const client = getSuiClientWithEnoki(acc?.chains?.[0] || activeChain);
 					const list = await resolveAddressToSuiNSNames(client, acc.address);
 					return { address: acc.address, names: Array.isArray(list) ? list : [] };
 				})
@@ -559,19 +350,6 @@
 	// Hook-style getter for all available accounts
 	export const useAccounts = () => (Array.isArray(_accountsSnapshot) ? _accountsSnapshot : []);
 
-	// Internal account management (not exported)
-	const account = {
-		get value(): SuiAccount | undefined {
-			return _account;
-		},
-		setAccount(account: SuiAccount | undefined): void {
-			_account = account;
-		},
-		removeAccount(): void {
-			_account = undefined;
-		}
-	};
-
 	// Export account loading state
 	export const accountLoading = {
 		get value() {
@@ -620,66 +398,34 @@
 	};
 
 	export const useSuiClient = () => {
-		// Priority: wallet's active chain > zkLoginGoogle.network > localStorage > mainnet
 		let chainId;
 		if (account.value?.chains?.[0]) {
-			// Use chain from connected wallet (read from wallet extension)
 			chainId = account.value.chains[0];
 		} else {
-			// Fallback when not connected: use zkLogin config or localStorage or mainnet
-			const cfg = getConfiguredNetwork();
+			const cfg = getConfiguredNetwork(_zkLoginGoogle);
 			if (cfg) {
 				chainId = `sui:${cfg}`;
 			} else {
-				chainId = getDefaultChain();
+				chainId = getDefaultChain(_zkLoginGoogle);
 			}
 		}
-		return getSuiClient(chainId);
+		return getSuiClientWithEnoki(chainId);
 	};
 
-	export const activeAccountIndex = {
-		get value() {
-			if (!account.value) return -1;
-			const list = Array.isArray(_accountsSnapshot) ? _accountsSnapshot : [];
-			return list.findIndex((acc) => acc.address === account.value!.address);
-		}
-	};
+	export const activeAccountIndex = sessionModule.activeAccountIndex(createSessionState());
 
 	export const switchAccount = (selector: number | string | SuiAccount): boolean => {
-		ensureCallable();
-		const list = Array.isArray(_accountsSnapshot) ? _accountsSnapshot : [];
-
-		let nextAccount: SuiAccount | undefined = undefined;
-		if (typeof selector === 'number') {
-			nextAccount = list[selector];
-		} else if (typeof selector === 'string') {
-			const target = selector.toLowerCase();
-			nextAccount = list.find((acc) => acc.address.toLowerCase() === target);
-		} else if (selector && typeof selector === 'object' && 'address' in selector) {
-			const target = selector.address?.toLowerCase();
-			nextAccount = list.find((acc) => acc.address.toLowerCase() === target) || selector;
+		if (status !== ConnectionStatus.CONNECTED) {
+			throw Error('wallet is not connected');
 		}
-
-		if (!nextAccount) return false;
-		account.setAccount(nextAccount);
-		if (!Array.isArray(nextAccount?.chains) || nextAccount.chains.length === 0) {
-			setAccountChainsInPlace([getDefaultChain() as `${string}:${string}`]);
+		const result = sessionModule.switchAccount(selector, createSessionState(), _zkLoginGoogle);
+		if (result) {
+			const cachedNames = _suiNamesByAddress[account.value?.address || ''];
+			if (Array.isArray(cachedNames)) {
+				_suiNames = cachedNames;
+			}
 		}
-		updateConnectionData({
-			selectedAccountAddress: nextAccount.address,
-			selectedChain:
-				Array.isArray(nextAccount?.chains) && nextAccount.chains[0]
-					? nextAccount.chains[0]
-					: getDefaultChain()
-		});
-
-		// Update _suiNames immediately from cache if available
-		const cachedNames = _suiNamesByAddress[nextAccount.address];
-		if (Array.isArray(cachedNames)) {
-			_suiNames = cachedNames;
-		}
-
-		return true;
+		return result;
 	};
 
 	// Expose connected wallet info
@@ -703,105 +449,22 @@
 		}
 	};
 
-	export const connectWithModal = async (
-		onSelection?: (payload: { wallet: Wallet; installed: boolean; connected: boolean }) => void
-	) => {
-		if (account.value) return { connected: true, alreadyConnected: true };
-		// Reuse the internal selection loop so behavior is consistent with switchWallet
-		while (true) {
-			const result: ModalResponse | undefined = await connectModal?.openAndWaitForResponse();
-			if (!result)
-				return { wallet: undefined, installed: false, connected: false, cancelled: true };
-			const selectedWallet = result?.wallet ?? (result as unknown as Wallet);
-			const installed =
-				typeof result === 'object'
-					? !!result?.installed
-					: !!(selectedWallet as WalletWithStatus)?.installed;
-			_lastWalletSelection = { wallet: selectedWallet, installed: !!installed };
-			try {
-				onSelection?.({ wallet: selectedWallet, installed, connected: false });
-			} catch {}
-			if (!installed) continue;
-			// If modal already started the connect (to preserve user gesture), skip re-calling connect
-			if (!result?.started) {
-				await connect(selectedWallet);
-			}
-			return { wallet: selectedWallet, installed: true, connected: true };
-		}
-	};
-
 	export const connect = async (wallet: WalletWithStatus): Promise<void> => {
-		walletAdapter = (wallet as WalletWithStatus)?.adapter;
-		if (walletAdapter) {
-			status = ConnectionStatus.CONNECTING;
-			try {
-				// Prefer adapter.connect when available
-				if (typeof walletAdapter.connect === 'function') {
-					await walletAdapter.connect();
-				} else if (
-					walletAdapter?.features?.['standard:connect'] &&
-					typeof walletAdapter.features['standard:connect'].connect === 'function'
-				) {
-					// Fallback to Wallet Standard connect (e.g., Enoki zkLogin)
-					await walletAdapter.features['standard:connect'].connect();
-				} else {
-					throw new Error('No compatible connect method on wallet');
-				}
-
-				const rawAccounts = Array.isArray(walletAdapter.accounts) ? walletAdapter.accounts : [];
-				const allAccounts = rawAccounts.filter(isSuiAccount);
-				_accountsSnapshot = allAccounts;
-				const connectionData = getConnectionData();
-				const preferredAddress = connectionData?.selectedAccountAddress?.toLowerCase();
-				let selectedAccount = allAccounts[0];
-				if (preferredAddress) {
-					const found = allAccounts.find((acc) => acc.address.toLowerCase() === preferredAddress);
-					if (found) selectedAccount = found;
-				}
-
-				account.setAccount(selectedAccount);
-				// Ensure account has a valid chain identifier
-				if (!Array.isArray(selectedAccount?.chains) || selectedAccount.chains.length === 0) {
-					const defaultChain = getDefaultChain() as `${string}:${string}`;
-					setAccountChainsInPlace([defaultChain]);
-				}
-				_wallet = wallet;
-				status = ConnectionStatus.CONNECTED;
-				saveConnectionData(wallet.name);
-				updateConnectionData({
-					selectedAccountAddress: selectedAccount?.address,
-					selectedChain:
-						Array.isArray(selectedAccount?.chains) && selectedAccount.chains[0]
-							? selectedAccount.chains[0]
-							: getDefaultChain()
-				});
-				_onConnect();
-				// Attach network change listener for the active wallet
-				attachWalletNetworkListener();
-				// Let reactive effects prefetch balance/names after connect
-			} catch {
-				status = ConnectionStatus.DISCONNECTED;
-			}
-		}
+		await sessionModule.connect(
+			wallet,
+			createSessionState(),
+			_zkLoginGoogle,
+			_onConnect,
+			_passkeyAdapter
+		);
+		saveConnectionData(wallet.name, _autoConnect);
+		attachWalletNetworkListener();
 	};
 
 	export const disconnect = (): void => {
-		// Support both Wallet Standard and adapter-specific disconnect
-		try {
-			const std = walletAdapter?.features?.['standard:disconnect'];
-			if (std && typeof std.disconnect === 'function') {
-				try {
-					std.disconnect();
-				} catch {}
-			} else if (walletAdapter && typeof walletAdapter.disconnect === 'function') {
-				try {
-					walletAdapter.disconnect();
-				} catch {}
-			}
-		} catch {}
-		account.removeAccount();
-		status = ConnectionStatus.DISCONNECTED;
+		sessionModule.disconnect(createSessionState());
 		clearConnectionData();
+		// Clear component-specific state
 		_suiNames = [];
 		_suiNamesLoading = false;
 		_suiNamesByAddress = {};
@@ -813,513 +476,162 @@
 		try {
 			for (const k of Object.keys(_balanceInflightByKey)) delete _balanceInflightByKey[k];
 		} catch {}
-		_accountsSnapshot = [];
 		_suiNSPrefetched = false;
 		_suiNSInternalUpdate = false;
-		if (typeof _walletEventsOff === 'function') {
-			_walletEventsOff();
-			_walletEventsOff = undefined;
-		}
-		walletAdapter = undefined;
-		_wallet = undefined;
 	};
 
-	// Programmatic wallet switch with modal and callbacks
-	// options.onSelection({ wallet, installed, connected:false }) -> notify every pick
-	// options.shouldConnect({ selectedWallet, currentWallet }) -> boolean to decide proceeding
-	// options.onBeforeDisconnect(currentWallet, selectedWallet)
-	// options.onConnected(newWallet)
-	// options.onCancel()
+	export const connectWithModal = async (
+		onSelection?: (payload: { wallet: Wallet; installed: boolean; connected: boolean }) => void
+	) => {
+		return await sessionModule.connectWithModal(
+			connectModal,
+			onSelection,
+			createSessionState(),
+			_zkLoginGoogle,
+			_onConnect,
+			_passkeyAdapter
+		);
+	};
+
 	export const switchWallet = async (options: SwitchWalletOptions = {}) => {
-		try {
-			const modal = typeof getConnectModal === 'function' ? getConnectModal() : undefined;
-			if (!modal) return { connected: false, cancelled: true };
-			while (true) {
-				const result: ModalResponse | undefined = await modal.openAndWaitForResponse();
-				if (!result) {
-					try {
-						options?.onCancel?.();
-					} catch {}
-					return { connected: false, cancelled: true };
-				}
-				const selectedWallet = result?.wallet ?? (result as unknown as Wallet);
-				const installed =
-					typeof result === 'object'
-						? !!result?.installed
-						: !!(selectedWallet as WalletWithStatus)?.installed;
-				_lastWalletSelection = { wallet: selectedWallet, installed: !!installed };
-				try {
-					options?.onSelection?.({ wallet: selectedWallet, installed, connected: false });
-				} catch {}
-				if (!installed) {
-					continue;
-				}
+		return await sessionModule.switchWallet(
+			getConnectModal,
+			options,
+			createSessionState(),
+			_zkLoginGoogle,
+			_onConnect,
+			_passkeyAdapter
+		);
+	};
 
-				const proceed =
-					typeof options?.shouldConnect === 'function'
-						? !!options.shouldConnect({ selectedWallet, currentWallet: _wallet })
-						: true;
-				if (!proceed) {
-					return { wallet: selectedWallet, installed: true, connected: false, skipped: true };
-				}
-
-				try {
-					options?.onBeforeDisconnect?.(_wallet, selectedWallet);
-				} catch {}
-				// If modal already triggered connect (to preserve user gesture), do not disconnect/connect again
-				if (result?.started) {
-					try {
-						options?.onConnected?.(selectedWallet);
-					} catch {}
-					return { wallet: selectedWallet, installed: true, connected: true };
-				}
-				try {
-					disconnect();
-				} catch {}
-				await connect(selectedWallet);
-				try {
-					options?.onConnected?.(_wallet);
-				} catch {}
-				return { wallet: selectedWallet, installed: true, connected: true };
+	// Create session context for tx functions
+	const sessionContext: SessionContext = {
+		getAccount: () => account.value,
+		getAdapter: () => walletAdapter,
+		getChain: (zkLoginGoogle: any) => {
+			const acct = account.value;
+			return Array.isArray(acct?.chains) && acct.chains[0]
+				? acct.chains[0]
+				: getDefaultChain(zkLoginGoogle);
+		},
+		getStatus: () => status,
+		ensureCallable: () => {
+			if (status !== ConnectionStatus.CONNECTED) {
+				throw Error('wallet is not connected');
 			}
-		} catch (_) {
-			return { connected: false, error: 'switch-failed' };
 		}
 	};
 
 	export const signAndExecuteTransaction = async (transaction: any): Promise<any> => {
-		ensureCallable();
-		const acct = account.value;
-		if (!acct) throw new Error('No account connected');
-		const chain =
-			Array.isArray(acct?.chains) && acct.chains[0] ? acct.chains[0] : getDefaultChain();
-		// Ensure sender is set for wallets (e.g., Enoki) that require explicit sender
-		try {
-			if (transaction && typeof transaction.setSender === 'function') {
-				transaction.setSender(acct.address);
-			}
-		} catch {}
-		if (typeof walletAdapter?.signAndExecuteTransaction === 'function') {
-			return await walletAdapter.signAndExecuteTransaction({ account: acct, chain, transaction });
-		}
-		const featTx = walletAdapter?.features?.['sui:signAndExecuteTransaction'];
-		if (featTx && typeof featTx.signAndExecuteTransaction === 'function') {
-			return await featTx.signAndExecuteTransaction({ account: acct, chain, transaction });
-		}
-		const featTxB = walletAdapter?.features?.['sui:signAndExecuteTransactionBlock'];
-		if (featTxB && typeof featTxB.signAndExecuteTransactionBlock === 'function') {
-			return await featTxB.signAndExecuteTransactionBlock({
-				account: acct,
-				chain,
-				transactionBlock: transaction
-			});
-		}
-		throw new Error('This wallet does not support signAndExecuteTransaction.');
+		return await txSignAndExecute(transaction, sessionContext, _zkLoginGoogle);
+	};
+
+	export const signTransaction = async (
+		transaction: any,
+		options: { sender?: string } = {}
+	): Promise<{ signature: string; bytes: Uint8Array }> => {
+		return await txSign(transaction, options, sessionContext, _zkLoginGoogle);
 	};
 
 	export const signMessage = async (
 		message: string | Uint8Array
 	): Promise<{ signature: string; messageBytes: string }> => {
-		ensureCallable();
-
-		// Convert string to Uint8Array if needed
-		const messageBytes = typeof message === 'string' ? new TextEncoder().encode(message) : message;
-
-		const acct = account.value;
-		if (!acct) throw new Error('No account connected');
-		const chain =
-			Array.isArray(acct?.chains) && acct.chains[0] ? acct.chains[0] : getDefaultChain();
-
-		// Prefer Wallet Standard feature if available
-		const featMsg = walletAdapter?.features?.['sui:signMessage'];
-		if (featMsg && typeof featMsg.signMessage === 'function') {
-			const result = await featMsg.signMessage({ account: acct, chain, message: messageBytes });
-			return {
-				signature: result.signature,
-				messageBytes: Array.from(messageBytes)
-					.map((b) => b.toString(16).padStart(2, '0'))
-					.join('')
-			};
-		}
-
-		// Try Wallet Standard sui:signPersonalMessage if provided by adapter
-		const featPersonal = walletAdapter?.features?.['sui:signPersonalMessage'];
-		if (featPersonal && typeof featPersonal.signPersonalMessage === 'function') {
-			const result = await featPersonal.signPersonalMessage({
-				account: acct,
-				chain,
-				message: messageBytes
-			});
-			return {
-				signature: result.signature,
-				messageBytes: Array.from(messageBytes)
-					.map((b) => b.toString(16).padStart(2, '0'))
-					.join('')
-			};
-		}
-
-		// Fallback to adapter-specific personal message signing
-		if (walletAdapter && typeof walletAdapter.signPersonalMessage === 'function') {
-			const result = await walletAdapter.signPersonalMessage({
-				account: acct,
-				message: messageBytes
-			});
-			return {
-				signature: result.signature,
-				messageBytes: Array.from(messageBytes)
-					.map((b) => b.toString(16).padStart(2, '0'))
-					.join('')
-			};
-		}
-
-		throw new Error(
-			'This wallet does not support message signing. Please try a different wallet or use signAndExecuteTransaction instead.'
-		);
+		return await txSignMessage(message, sessionContext, _zkLoginGoogle);
 	};
 
 	export const canSignMessage = (): boolean => {
-		if (status !== ConnectionStatus.CONNECTED || !walletAdapter) {
-			return false;
-		}
-
-		return (
-			(walletAdapter.features &&
-				walletAdapter.features['sui:signMessage'] &&
-				typeof walletAdapter.features['sui:signMessage'].signMessage === 'function') ||
-			(walletAdapter.features &&
-				walletAdapter.features['sui:signPersonalMessage'] &&
-				typeof walletAdapter.features['sui:signPersonalMessage'].signPersonalMessage ===
-					'function') ||
-			typeof walletAdapter.signMessage === 'function' ||
-			typeof walletAdapter.signPersonalMessage === 'function'
-		);
+		return txCanSignMessage(sessionContext);
 	};
 
-	// Validate Enoki (zkLogin) configuration to detect suspicious or invalid credentials
-	// Returns true if the configuration appears suspicious, false otherwise
-	const isSuspiciousEnokiConfig = (apiKey: unknown, googleId: unknown): boolean => {
-		try {
-			const suspiciousApiKey = typeof apiKey === 'string' && apiKey.length < 16;
-			// Check if Google Client ID is suspicious: must end with the standard Google OAuth domain
-			const suspiciousGoogleId =
-				typeof googleId === 'string' && !googleId.endsWith('.apps.googleusercontent.com');
-			// Return true if either credential appears suspicious
-			return !!(suspiciousApiKey || suspiciousGoogleId);
-		} catch {
-			// If validation fails due to an error, assume config is valid (return false)
-			return false;
-		}
+	// Integration helpers (re-exported from integrations module)
+	export const isPasskeyWallet = (): boolean => {
+		return integrationsModule.isPasskeyWallet(_wallet, _passkeyAdapter);
 	};
 
-	// zkLogin helpers (Enoki)
+	export const usePasskeyAccount = () => {
+		return integrationsModule.usePasskeyAccount(_wallet, _passkeyAdapter);
+	};
+
+	export const isMultisigWallet = (): boolean => {
+		return integrationsModule.isMultisigWallet(_wallet, _multisigAdapter);
+	};
+
+	export const useMultisigAccount = () => {
+		return integrationsModule.useMultisigAccount(_wallet, _multisigAdapter);
+	};
+
 	export const isZkLoginWallet = (): boolean => {
-		return !!walletAdapter?.features?.['enoki:getSession'];
+		return integrationsModule.isZkLoginWallet(walletAdapter);
 	};
 
 	export const getZkLoginInfo = async (): Promise<{ session: any; metadata: any } | null> => {
-		if (!isZkLoginWallet()) return null;
-		try {
-			const sessionFeat = walletAdapter?.features?.['enoki:getSession'];
-			const metaFeat = walletAdapter?.features?.['enoki:getMetadata'];
-			let session = null;
-			let metadata = null;
-			try {
-				if (sessionFeat && typeof sessionFeat.getSession === 'function') {
-					session = await sessionFeat.getSession();
-				}
-			} catch {}
-			try {
-				if (metaFeat && typeof metaFeat.getMetadata === 'function') {
-					metadata = await metaFeat.getMetadata();
-				}
-			} catch {}
-			return { session, metadata };
-		} catch {
-			return null;
-		}
-	};
-
-	const normalizeWalletName = (name: string) =>
-		(name || '')
-			.toLowerCase()
-			.replace(/wallet$/g, '')
-			.replace(/[^a-z0-9]/g, '');
-
-	const applyWalletConfig = (
-		wallets: WalletWithStatus[],
-		config: WalletConfig
-	): WalletWithStatus[] => {
-		const { customNames = {}, ordering = [] } = config;
-
-		// Apply custom names
-		const walletsWithCustomNames = wallets.map((wallet) => {
-			const customName = customNames[wallet.name];
-			return customName
-				? { ...wallet, displayName: customName, originalName: wallet.name }
-				: wallet;
-		});
-
-		// Apply custom ordering
-		// if (isBrowser && ordering.length > 0) {
-		// 	console.log('📋 Applying ordering:', [...ordering]);
-		// }
-		const result =
-			ordering.length > 0
-				? walletsWithCustomNames.sort((a, b) => {
-						const aName = a.originalName || a.name;
-						const bName = b.originalName || b.name;
-						const aIndex = ordering.indexOf(aName);
-						const bIndex = ordering.indexOf(bName);
-
-						// If both wallets are in ordering, sort by order
-						if (aIndex !== -1 && bIndex !== -1) {
-							return aIndex - bIndex;
-						}
-						// If only a is in ordering, a comes first
-						if (aIndex !== -1) return -1;
-						// If only b is in ordering, b comes first
-						if (bIndex !== -1) return 1;
-						// If neither is in ordering, sort alphabetically
-						return aName.localeCompare(bName);
-					})
-				: walletsWithCustomNames;
-		// if (isBrowser && result.length > 0) {
-		// 	console.log('✅ Final wallet order:', result.map((w) => `${w.name} → ${w.displayName || w.name}`));
-		// }
-
-		return result;
-	};
-
-	const getAvailableWallets = (
-		defaultWallets: readonly { name: string; iconUrl?: string; [key: string]: any }[],
-		detectedAdapters: SuiWalletAdapter[],
-		config: WalletConfig = {}
-	): WalletWithStatus[] => {
-		const adapters = Array.isArray(detectedAdapters) ? detectedAdapters : detectWalletAdapters();
-
-		// Map default wallets to detected adapters by fuzzy-normalized name matching
-		const list: WalletWithStatus[] = defaultWallets.map((item) => {
-			const normalizedItem = normalizeWalletName(item.name);
-			const foundAdapter = adapters.find((walletAdapter) => {
-				const normalizedAdapter = normalizeWalletName(walletAdapter.name);
-				return (
-					normalizedItem.includes(normalizedAdapter) || normalizedAdapter.includes(normalizedItem)
-				);
-			});
-
-			return {
-				...item,
-				name: item.name,
-				iconUrl: item.iconUrl,
-				adapter: foundAdapter ? foundAdapter : undefined,
-				installed: !!foundAdapter
-			} as WalletWithStatus;
-		});
-
-		// Include extra detected adapters that are NOT present in the default wallet list
-		// This covers wallets like Coin98 that support Sui but aren't listed in the SDK defaults
-		const defaultNormalizedNames = defaultWallets.map((w) => normalizeWalletName(w.name));
-		const extraAdapters = adapters.filter((a) => {
-			const na = normalizeWalletName(a.name);
-			return !defaultNormalizedNames.some((dn) => dn.includes(na) || na.includes(dn));
-		});
-
-		const extraWalletEntries: WalletWithStatus[] = extraAdapters.map((a) => ({
-			name: a.name,
-			originalName: a.name,
-			displayName: a.name,
-			iconUrl: typeof a.icon === 'string' ? a.icon : undefined,
-			adapter: a,
-			installed: true
-		}));
-
-		return applyWalletConfig([...list, ...extraWalletEntries], config);
-	};
-
-	const detectWalletAdapters = (): SuiWalletAdapter[] => {
-		if (!isBrowser) return [];
-		const walletRadar = new WalletRadar();
-		walletRadar.activate();
-
-		// Read the current snapshot of detected adapters (extensions/injected)
-		const radarAdapters = walletRadar.getDetectedWalletAdapters();
-
-		// Also include wallets registered via Wallet Standard registry (e.g., Enoki providers)
-		let registryWallets: readonly Wallet[] = [];
-		try {
-			const registry = getWallets?.();
-			if (registry && typeof registry.get === 'function') {
-				registryWallets = registry.get() || [];
-			}
-		} catch {}
-
-		walletRadar.deactivate();
-
-		// Merge and de-duplicate by name
-		return uniqueAdaptersByName([...(radarAdapters || []), ...Array.from(registryWallets || [])]);
-	};
-
-	const ensureCallable = (): void => {
-		if (status !== ConnectionStatus.CONNECTED) {
-			throw Error('wallet is not connected');
-		}
+		return await integrationsModule.getZkLoginInfo(walletAdapter);
 	};
 
 	export const walletAdapters: SuiWalletAdapter[] = [];
 	export const availableWallets: WalletWithStatus[] = [];
 
-	let _walletsRegistryOff: (() => void) | undefined = undefined;
-	let _discoveryInitialized = false;
-	const _discoverySubscribers = new Set<
-		(adapters: SuiWalletAdapter[], wallets: WalletWithStatus[]) => void
-	>();
-	let _lastDiscoveryLogKey = '';
-	let _lastAvailableLogKey = '';
-	let _discoveryAttempt = 0;
-	const uniqueAdaptersByName = (adapters: (Wallet | SuiWalletAdapter)[]): SuiWalletAdapter[] => {
-		const map = new Map<string, SuiWalletAdapter>();
-		for (const a of adapters || []) {
-			if (!a || !a.name) continue;
-			if (!map.has(a.name)) map.set(a.name, a as SuiWalletAdapter);
-		}
-		return Array.from(map.values());
-	};
-
+	// Backward-compatible exports for wallet discovery APIs
+	// (keep the original signature that mutates the exported arrays in-place)
 	export const setModuleWalletDiscovery = (
 		adapters: SuiWalletAdapter[],
 		wallets: WalletWithStatus[]
 	): void => {
-		const nextAdapters = Array.isArray(adapters) ? adapters : [];
-		const nextWallets = Array.isArray(wallets) ? wallets : [];
-		// In-place mutation to preserve module live bindings and avoid reassignment
-		walletAdapters.length = 0;
-		walletAdapters.push(...nextAdapters);
-		availableWallets.length = 0;
-		availableWallets.push(...nextWallets);
-		try {
-			for (const cb of _discoverySubscribers) {
-				try {
-					cb(walletAdapters, availableWallets);
-				} catch {}
-			}
-		} catch {}
+		_setModuleWalletDiscovery(adapters, wallets, walletAdapters, availableWallets);
 	};
 
 	export const subscribeWalletDiscovery = (
 		callback: (adapters: SuiWalletAdapter[], wallets: WalletWithStatus[]) => void
 	): (() => void) => {
-		if (typeof callback !== 'function') return () => {};
-		_discoverySubscribers.add(callback);
-		// Emit current snapshot immediately
+		const off = _subscribeWalletDiscovery(callback);
+		// Emit current snapshot immediately (original behavior)
 		try {
 			callback(walletAdapters, availableWallets);
 		} catch {}
-		return () => {
-			_discoverySubscribers.delete(callback);
-		};
+		return off;
 	};
 
-	const refreshDiscoverySnapshot = (attemptLabel: number | string): void => {
-		const snapshot = uniqueAdaptersByName(detectWalletAdapters());
-		try {
-			const adapterNames = snapshot
-				.map((a) => a?.name)
-				.filter(Boolean)
-				.sort();
-			const key = adapterNames.join('|');
-			if (key !== _lastDiscoveryLogKey) {
-				_lastDiscoveryLogKey = key;
-				const ts = new Date().toISOString();
-				// console.log(
-				// 	`[SuiModule] [${ts}] [attempt:${attemptLabel ?? '-'}] Detected adapters:`,
-				// 	adapterNames
-				// );
-			}
-		} catch {}
-		const wallets = getAvailableWallets(AllDefaultWallets, snapshot, _walletConfig);
-		try {
-			const walletNames = wallets
-				.map((w) => w?.name)
-				.filter(Boolean)
-				.sort();
-			const wkey = walletNames.join('|');
-			if (wkey !== _lastAvailableLogKey) {
-				_lastAvailableLogKey = wkey;
-				const ts = new Date().toISOString();
-				// console.log(
-				// 	`[SuiModule] [${ts}] [attempt:${attemptLabel ?? '-'}] Available wallets:`,
-				// 	walletNames
-				// );
-			}
-		} catch {}
-		setModuleWalletDiscovery(snapshot, wallets);
-	};
+	let _walletsRegistryOff: (() => void) | undefined = undefined;
+	let _discoveryInitialized = false;
 
-	// Lightweight API probe to validate Enoki API key without completing OAuth flow
-	const probeEnokiApiKey = async (apiKey: string, network: string): Promise<void> => {
-		if (!isBrowser) return;
-		if (!apiKey) return;
-		try {
-			// Use GET /v1/app to validate API key without required body params
-			const res = await fetch('https://api.enoki.mystenlabs.com/v1/app', {
-				method: 'GET',
-				headers: { Authorization: `Bearer ${apiKey}` }
-			});
-			if (res.status === 401 || res.status === 403) {
-				_enokiKeyValid = false;
-				try {
-					console.error('[SuiModule] Enoki API key invalid or unauthorized');
-				} catch {}
-				return;
-			}
-			if (!res.ok) {
-				try {
-					console.warn('[SuiModule] Enoki /v1/app returned non-OK status:', res.status);
-				} catch {}
-				return;
-			}
-			try {
-				_enokiKeyValid = true;
-			} catch {}
-		} catch (err) {
-			try {
-				console.warn('[SuiModule] Enoki API key probe failed:', err);
-			} catch {}
-		}
+	const refreshDiscoverySnapshotWrapper = (attemptLabel: number | string): void => {
+		const { adapters, wallets } = refreshDiscoverySnapshot(attemptLabel, _walletConfig);
+		setModuleWalletDiscovery(adapters, wallets);
 	};
 
 	export const initWalletDiscovery = (): void => {
 		if (!isBrowser) return;
-		if (_discoveryInitialized) return;
+		if (_discoveryInitialized) {
+			const attempt = incrementDiscoveryAttempt();
+			refreshDiscoverySnapshotWrapper(attempt);
+			return;
+		}
 		_discoveryInitialized = true;
-		// Ensure Enoki wallets are registered before discovery so they appear in the modal
-		// Trigger client creation for mainnet, which invokes registerEnokiWallets with providers
 		try {
 			if (_zkLoginGoogle) {
-				const cfg = getConfiguredNetwork() || 'mainnet';
-				getSuiClient(`sui:${cfg}`);
+				const cfg = getConfiguredNetwork(_zkLoginGoogle) || 'mainnet';
+				getSuiClientWithEnoki(`sui:${cfg}`);
 			}
 		} catch {}
 
-		// Probe Enoki API key once to provide early feedback in console
 		try {
 			if (_zkLoginGoogle && !_enokiProbeDone) {
 				_enokiProbeDone = true;
 				const apiKey = _zkLoginGoogle?.apiKey;
-				// Derive preferred network: use active chain if available
-				const configured = getConfiguredNetwork();
+				const configured = getConfiguredNetwork(_zkLoginGoogle);
 				const chainId =
-					account.value?.chains?.[0] || (configured ? `sui:${configured}` : getDefaultChain());
+					account.value?.chains?.[0] ||
+					(configured ? `sui:${configured}` : getDefaultChain(_zkLoginGoogle));
 				const network = configured || chainId?.split?.(':')?.[1] || 'mainnet';
-				// Skip probing if config is suspicious
 				if (!isSuspiciousEnokiConfig(apiKey, _zkLoginGoogle?.googleClientId)) {
 					setTimeout(() => {
-						probeEnokiApiKey(apiKey, network);
+						integrationsModule.probeEnokiApiKey(apiKey, network).then((valid) => {
+							if (valid !== undefined) _enokiKeyValid = valid;
+						});
 					}, 0);
 				}
 			}
 		} catch {}
-		// Remove previous listener if any
 		try {
 			if (typeof _walletsRegistryOff === 'function') {
 				_walletsRegistryOff();
@@ -1327,16 +639,14 @@
 			}
 		} catch {}
 
-		// Run multiple times shortly after mount to catch late-registered wallets
 		const delays = [0, 50, 200, 600, 1200];
 		for (const d of delays) {
 			setTimeout(() => {
-				_discoveryAttempt += 1;
-				refreshDiscoverySnapshot(_discoveryAttempt);
+				const attempt = incrementDiscoveryAttempt();
+				refreshDiscoverySnapshotWrapper(attempt);
 			}, d);
 		}
 
-		// Also listen to Wallet Standard registry events if available
 		try {
 			const registry = getWallets?.();
 			const registryOn =
@@ -1346,14 +656,9 @@
 			if (registryOn && typeof registryOn === 'function') {
 				_walletsRegistryOff = registryOn('register', (wallet: Wallet) => {
 					try {
-						_discoveryAttempt += 1;
-						const ts = new Date().toISOString();
-						// console.log(
-						// 	`[SuiModule] [${ts}] [attempt:${_discoveryAttempt}] Registry register:`,
-						// 	wallet?.name || 'unknown'
-						// );
+						const attempt = incrementDiscoveryAttempt();
 					} catch {}
-					refreshDiscoverySnapshot(_discoveryAttempt);
+					refreshDiscoverySnapshotWrapper(incrementDiscoveryAttempt());
 				});
 			}
 		} catch {}
@@ -1368,6 +673,8 @@
 		autoSuiBalance?: boolean;
 		walletConfig?: WalletConfig;
 		zkLoginGoogle?: ZkLoginGoogleConfig | null;
+		passkey?: PasskeyConfig | null;
+		multisig?: SuiModuleMultisigConfig | null;
 		children?: import('svelte').Snippet;
 	}>();
 
@@ -1383,6 +690,14 @@
 		_autoFetchBalance = !!(props.autoSuiBalance ?? true);
 		_walletConfig = props.walletConfig || {};
 		_zkLoginGoogle = props.zkLoginGoogle || null;
+		_passkeyConfig = props.passkey || null;
+
+		// Handle multisig config - support both legacy and new MultisigConfig
+		if (props.multisig) {
+			_multisigConfig = props.multisig;
+		} else {
+			_multisigConfig = null;
+		}
 
 		// Only reset probe state if zkLoginGoogle config actually changed
 		const currentKey = props.zkLoginGoogle
@@ -1401,26 +716,215 @@
 	let _availableWalletsState = $state<WalletWithStatus[]>([]);
 	let _availableWalletsVisible = $state<WalletWithStatus[]>([]);
 
-	// Track if Enoki wallets have been registered for current config
-	let _enokiRegistered = false;
-
 	// Register Enoki wallets when zkLoginGoogle config is available
 	$effect(() => {
 		if (_zkLoginGoogle && !_enokiRegistered && isBrowser) {
 			_enokiRegistered = true;
-			const cfg = getConfiguredNetwork() || 'mainnet';
-			// This will trigger registerEnokiWallets inside getSuiClient
-			getSuiClient(`sui:${cfg}`);
-			// Refresh discovery to pick up newly registered Enoki wallets
+			const cfg = getConfiguredNetwork(_zkLoginGoogle) || 'mainnet';
+			getSuiClientWithEnoki(`sui:${cfg}`);
 			setTimeout(() => {
-				_discoveryAttempt += 1;
-				refreshDiscoverySnapshot(_discoveryAttempt);
+				const attempt = incrementDiscoveryAttempt();
+				refreshDiscoverySnapshotWrapper(attempt);
 			}, 100);
 		}
 	});
 
+	let _autoConnectAttempted = false;
+
+	// Register Passkey wallet when config is available
 	$effect(() => {
-		// Start discovery after mount; subscribe for updates
+		if (_passkeyConfig && !_passkeyRegistered && isBrowser) {
+			_passkeyAdapter = integrationsModule.registerPasskeyWallet(
+				_passkeyConfig,
+				_zkLoginGoogle,
+				() => {
+					const attempt = incrementDiscoveryAttempt();
+					refreshDiscoverySnapshotWrapper(attempt);
+				}
+			);
+			if (_passkeyAdapter) {
+				_passkeyRegistered = true;
+			}
+		}
+	});
+
+	// Helper to build resolver context
+	const buildResolverContext = (): ResolverContext => {
+		return integrationsModule.buildResolverContext(
+			_passkeyAdapter,
+			_wallet,
+			_account,
+			walletAdapter
+		);
+	};
+
+	// Initialize Multisig when config is available (new MultisigConfig)
+	$effect(() => {
+		if (
+			!_multisigConfig ||
+			!isBrowser ||
+			_multisigInitialized ||
+			!isMultisigConfig(_multisigConfig)
+		) {
+			return;
+		}
+		_multisigInitialized = true;
+
+		const multisigConfig = _multisigConfig as MultisigConfig;
+
+		const getCurrentWalletPublicKey = async () => {
+			if (!_account || !walletAdapter) return null;
+			try {
+				if (_wallet?.name === 'Passkey' && _passkeyAdapter) {
+					const passkeyAccount = _passkeyAdapter.accounts?.[0];
+					if (passkeyAccount) {
+						const pkBytes = (passkeyAccount as any).publicKey;
+						if (pkBytes) {
+							return { publicKey: new PasskeyPublicKey(pkBytes), type: 'passkey' };
+						}
+					}
+				}
+
+				if (_wallet?.name === 'Sign in with Google') {
+					try {
+						const msg = 'Sui Svelte Wallet Kit: public key probe';
+						const sigRes = await signMessage(msg);
+						const parsed: any = parseSerializedSignature(sigRes.signature);
+						if (parsed?.publicKey) {
+							let pk: any = parsed.publicKey;
+							if (pk instanceof Uint8Array) {
+								pk = new ZkLoginPublicIdentifier(pk);
+							}
+							return { publicKey: pk, type: 'zklogin' };
+						}
+					} catch (e) {
+						console.warn('[SuiModule] Failed to get zkLogin public key:', e);
+					}
+					return null;
+				}
+
+				const pkFeature = walletAdapter.features?.['sui:publicKey'] as any;
+				if (pkFeature && typeof pkFeature.getPublicKey === 'function') {
+					const pk = await pkFeature.getPublicKey();
+					if (pk) {
+						const keyType = pk.flag === 0 ? 'ed25519' : pk.flag === 1 ? 'secp256k1' : 'secp256r1';
+						return { publicKey: pk, type: keyType };
+					}
+				}
+
+				const accountPk = (_account as any).publicKey;
+				if (accountPk) {
+					if (typeof accountPk.toRawBytes === 'function') {
+						const flag = accountPk.flag ?? 0;
+						const keyType = flag === 0 ? 'ed25519' : flag === 1 ? 'secp256k1' : 'secp256r1';
+						return { publicKey: accountPk, type: keyType };
+					}
+					if (accountPk instanceof Uint8Array) {
+						try {
+							const pk = new Ed25519PublicKey(accountPk);
+							return { publicKey: pk, type: 'ed25519' };
+						} catch {
+							try {
+								const pk = new Secp256k1PublicKey(accountPk);
+								return { publicKey: pk, type: 'secp256k1' };
+							} catch {}
+						}
+					}
+				}
+
+				try {
+					const msg = 'Sui Svelte Wallet Kit: public key probe';
+					const sigRes = await signMessage(msg);
+					const parsed: any = parseSerializedSignature(sigRes.signature);
+					const scheme = parsed?.signatureScheme ?? parsed?.scheme;
+					const inferType = (s: string) => {
+						const lower = s?.toLowerCase() || '';
+						if (lower.includes('ed25519')) return 'ed25519';
+						if (lower.includes('secp256k1')) return 'secp256k1';
+						if (lower.includes('secp256r1')) return 'secp256r1';
+						return 'ed25519';
+					};
+
+					let pk = parsed?.publicKey;
+					if (pk instanceof Uint8Array) {
+						const keyType = inferType(scheme);
+						if (keyType === 'ed25519') pk = new Ed25519PublicKey(pk);
+						else if (keyType === 'secp256k1') pk = new Secp256k1PublicKey(pk);
+						else pk = new Secp256r1PublicKey(pk);
+						return { publicKey: pk, type: keyType };
+					}
+					if (pk && typeof pk.toRawBytes === 'function') {
+						return { publicKey: pk, type: inferType(scheme) };
+					}
+				} catch (e) {
+					console.warn('[SuiModule] Failed to get public key via signing:', e);
+				}
+
+				return null;
+			} catch {
+				return null;
+			}
+		};
+
+		integrationsModule.initializeNewMultisigConfig(
+			multisigConfig,
+			_zkLoginGoogle,
+			buildResolverContext,
+			async (tx, options) => await signTransaction(tx, options),
+			getCurrentWalletPublicKey
+		);
+	});
+
+	// Update Multisig resolver context when wallet changes
+	$effect(() => {
+		if (_multisigConfig && _account) {
+			multisigStore.resolveSigners(buildResolverContext());
+		}
+	});
+
+	// Register Multisig wallet when config is available (legacy MultisigModuleConfig only)
+	$effect(() => {
+		if (!_multisigConfig || !isBrowser || isMultisigConfig(_multisigConfig)) {
+			return;
+		}
+
+		const legacyConfig = _multisigConfig as MultisigModuleConfig;
+		const nextKey = integrationsModule.getMultisigConfigKey(legacyConfig);
+
+		if (_multisigAdapter && _multisigRegisteredKey === nextKey) {
+			return;
+		}
+
+		const adapter = integrationsModule.registerLegacyMultisigAdapter(
+			legacyConfig,
+			_zkLoginGoogle,
+			() => {
+				const attempt = incrementDiscoveryAttempt();
+				refreshDiscoverySnapshotWrapper(attempt);
+			},
+			(acc) => {
+				_accountsSnapshot = [acc];
+				account.setAccount(acc);
+			},
+			(s) => {
+				status = s;
+			},
+			(adapter) => {
+				walletAdapter = adapter;
+			},
+			(data) => {
+				updateConnectionData(data);
+			},
+			_multisigAdapter
+		);
+
+		if (adapter) {
+			_multisigAdapter = adapter;
+			_multisigRegisteredKey = nextKey;
+		}
+	});
+
+	$effect(() => {
 		const off = subscribeWalletDiscovery((adapters, wallets) => {
 			_discoveredAdapters = Array.isArray(adapters) ? adapters.slice() : [];
 			_availableWalletsState = Array.isArray(wallets) ? wallets.slice() : [];
@@ -1434,19 +938,31 @@
 	});
 
 	$effect.pre(() => {
-		// Start discovery after mount; idempotent
 		initWalletDiscovery();
 	});
 
-	// Filter visible wallets based on zkLoginGoogle option and key validity
+	// Filter visible wallets based on zkLoginGoogle, passkey, and multisig options
 	$effect(() => {
 		const wallets = Array.isArray(_availableWalletsState) ? _availableWalletsState : [];
 		const canShowGoogle =
 			!!(_zkLoginGoogle && _zkLoginGoogle.apiKey && _zkLoginGoogle.googleClientId) &&
 			_enokiKeyValid !== false;
-		_availableWalletsVisible = canShowGoogle
-			? wallets
-			: wallets.filter((w) => w?.name !== 'Sign in with Google');
+		const canShowPasskey =
+			!!(_passkeyConfig && _passkeyConfig.rpId && _passkeyConfig.rpName) &&
+			PasskeyService.isSupported();
+		const canShowMultisig = !!(
+			_multisigConfig &&
+			isLegacyMultisigConfig(_multisigConfig) &&
+			_multisigConfig.signers &&
+			_multisigConfig.signers.length > 0
+		);
+
+		_availableWalletsVisible = wallets.filter((w) => {
+			if (w?.name === 'Sign in with Google' && !canShowGoogle) return false;
+			if (w?.name === 'Passkey' && !canShowPasskey) return false;
+			if (w?.name === 'Multisig' && !canShowMultisig) return false;
+			return true;
+		});
 	});
 
 	// Auto-connect wallet when conditions are met
@@ -1454,12 +970,16 @@
 	$effect(() => {
 		// Skip if auto-connect feature is disabled
 		if (!_autoConnect) return;
+		// Skip if already attempted auto-connect (prevent multiple attempts)
+		if (_autoConnectAttempted) return;
 		// Skip if user is already connected (account exists)
 		if (account.value) return;
 		// Skip if no wallets are available yet
 		if (!Array.isArray(_availableWalletsState) || _availableWalletsState.length === 0) return;
 		// Skip if a connection attempt is already in progress
 		if (status === ConnectionStatus.CONNECTING) return;
+		// Mark as attempted before proceeding
+		_autoConnectAttempted = true;
 		// All conditions met, proceed with auto-connect
 		autoConnectWallet();
 	});

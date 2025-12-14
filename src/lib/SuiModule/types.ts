@@ -13,6 +13,7 @@ export interface SuiWalletAdapter extends Omit<Wallet, 'features' | 'accounts'> 
 	connect?: () => Promise<void>;
 	disconnect?: () => Promise<void>;
 	signAndExecuteTransaction?: (params: SignAndExecuteTransactionParams) => Promise<any>;
+	signTransaction?: (params: SignTransactionParams) => Promise<SignTransactionResult>;
 	signPersonalMessage?: (params: SignPersonalMessageParams) => Promise<SignMessageResult>;
 	signMessage?: (params: SignMessageParams) => Promise<SignMessageResult>;
 	accounts?: readonly WalletAccount[];
@@ -33,6 +34,9 @@ export interface SuiWalletAdapter extends Omit<Wallet, 'features' | 'accounts'> 
 			signAndExecuteTransactionBlock: (
 				params: SignAndExecuteTransactionBlockParams
 			) => Promise<any>;
+		};
+		'sui:signTransaction'?: {
+			signTransaction: (params: SignTransactionParams) => Promise<SignTransactionResult>;
 		};
 		'sui:signMessage'?: {
 			signMessage: (params: SignMessageParams) => Promise<SignMessageResult>;
@@ -65,6 +69,23 @@ export interface SignAndExecuteTransactionBlockParams {
 	account: WalletAccount;
 	chain: string;
 	transactionBlock: any;
+}
+
+/**
+ * Sign (but do NOT execute) a transaction
+ */
+export interface SignTransactionParams {
+	account: WalletAccount;
+	chain: string;
+	transaction: any;
+}
+
+/**
+ * Result of signing a transaction
+ */
+export interface SignTransactionResult {
+	signature: string;
+	bytes: Uint8Array;
 }
 
 /**
@@ -281,10 +302,90 @@ export interface SuiNamesStore extends ReadableStore<string[]> {
 /**
  * Last wallet selection store with clear method
  */
-export interface LastWalletSelectionStore
-	extends ReadableStore<WalletSelectionPayload | undefined> {
+export interface LastWalletSelectionStore extends ReadableStore<
+	WalletSelectionPayload | undefined
+> {
 	clear(): void;
 }
+
+/**
+ * Passkey configuration for WebAuthn-based wallet
+ */
+export interface PasskeyConfig {
+	rpId: string;
+	rpName: string;
+	authenticatorAttachment?: 'platform' | 'cross-platform';
+	timeout?: number;
+}
+
+/**
+ * Multisig signer type
+ */
+export type MultisigSignerType = 'ed25519' | 'secp256k1' | 'secp256r1' | 'zklogin' | 'passkey';
+
+/**
+ * Multisig signer configuration (simplified for module props)
+ */
+export interface MultisigSignerConfig {
+	/** Unique identifier for this signer */
+	id: string;
+	/** Type of signer */
+	type: MultisigSignerType;
+	/** Weight of this signer (default: 1) */
+	weight: number;
+	/** Public key bytes or base64 string */
+	publicKey?: Uint8Array | string;
+	/** zkLogin address seed (required for zklogin type) */
+	addressSeed?: string;
+	/** zkLogin issuer (required for zklogin type) */
+	issuer?: string;
+	/** Display name for UI */
+	name?: string;
+}
+
+/**
+ * Callback to request a partial signature for multisig.
+ * Return null to skip a signer (adapter will continue to next signer).
+ */
+export type MultisigSignatureRequestCallback = (
+	signer: MultisigSignerConfig,
+	txBytes: Uint8Array
+) => Promise<{ signature: string } | null>;
+
+/**
+ * Multisig module configuration
+ */
+export interface MultisigModuleConfig {
+	/** Threshold required to execute transactions */
+	threshold: number;
+	/** List of signers */
+	signers: MultisigSignerConfig[];
+	/** Optional name for this multisig wallet */
+	name?: string;
+	/** Network for the multisig wallet */
+	network?: SuiNetwork;
+	/** Callback to request partial signatures from signers */
+	onSignatureRequest?: MultisigSignatureRequestCallback;
+	/** Callback when multisig address changes */
+	onAddressChange?: (oldAddress: string, newAddress: string) => void;
+}
+
+/**
+ * Multisig config types (imported from MultisigService)
+ * Re-exported here for convenience
+ */
+export type {
+	MultisigConfig,
+	MultisigPreConfig,
+	MultisigDynamicConfig
+} from '../MultisigService/MultisigTypes.js';
+
+/**
+ * Combined multisig config type - supports both legacy and new Multisig configs
+ * Used for SuiModule's multisig prop
+ */
+import type { MultisigConfig } from '../MultisigService/MultisigTypes.js';
+export type SuiModuleMultisigConfig = MultisigModuleConfig | MultisigConfig;
 
 /**
  * SuiModule component props
@@ -296,5 +397,7 @@ export interface SuiModuleProps {
 	autoSuiBalance?: boolean;
 	walletConfig?: WalletConfig;
 	zkLoginGoogle?: ZkLoginGoogleConfig | null;
+	passkey?: PasskeyConfig | null;
+	multisig?: SuiModuleMultisigConfig | null;
 	children?: any;
 }
