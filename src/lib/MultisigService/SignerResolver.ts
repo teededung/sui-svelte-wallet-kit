@@ -398,6 +398,7 @@ export class SignerResolver {
 		// 0x00 = ED25519
 		// 0x01 = Secp256k1
 		// 0x02 = Secp256r1
+		// 0x03 = MultiSig (Not currently supported as a signer type)
 		// 0x05 = ZkLogin
 		// 0x06 = Passkey
 		switch (flag) {

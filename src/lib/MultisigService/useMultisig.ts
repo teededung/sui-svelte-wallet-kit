@@ -4,14 +4,7 @@
  */
 
 import { multisigStore, type MultisigProviders } from './MultisigStore.svelte.js';
-import type {
-	MultisigConfig,
-	MultisigState,
-	ResolvedSigner,
-	MultisigSigner,
-	MultisigProposal,
-	UseMultisigReturn
-} from './MultisigTypes.js';
+import type { MultisigConfig, UseMultisigReturn } from './MultisigTypes.js';
 
 // Re-export store and types
 export { multisigStore, type MultisigProviders };
@@ -55,12 +48,19 @@ export function useMultisig(): UseMultisigReturn {
 		get threshold() {
 			return store.threshold;
 		},
+		get resolvedCount() {
+			return store.resolvedCount;
+		},
+		get totalWeight() {
+			return store.totalWeight;
+		},
 
 		// Actions
 		createProposal: (tx) => store.createProposal(tx),
 		refreshSigners: async () => store.resolveSigners(),
 		addSignerFromCurrentWallet: (options) => store.addSignerFromCurrentWallet(options),
 		addSigner: async (signer) => store.addSigner(signer),
+		updateSignerWeight: (signerId, weight) => store.updateSignerWeight(signerId, weight),
 		removeSigner: (signerId) => store.removeSigner(signerId),
 		setThreshold: (threshold) => store.setThreshold(threshold),
 		saveConfig: () => store.saveConfig(),

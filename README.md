@@ -10,6 +10,8 @@ A Svelte 5 wallet kit for the Sui blockchain. Ship wallet connection, multi‑ac
 - **Pre-built UI**: `ConnectButton` and a responsive wallet `ConnectModal`
 - **Auto-connect**: Persist selection and reconnect via `localStorage`
 - **Multi-account**: Read all accounts, switch by index/address
+- **Passkeys**: Built-in support for biometric authentication (Face ID, Touch ID)
+- **Multisig**: Integrated N-of-M multisig support (create, sign, execute proposals)
 - **SuiNS & balance**: Auto-fetch SuiNS names and SUI balance (configurable)
 - **Signing**: Sign and execute transactions; optional message signing
 - **Svelte 5 ready**: Built with runes (`$state`, `$effect`, `$props`) and full TypeScript types
@@ -106,6 +108,7 @@ Props:
 - `walletConfig?: { customNames?: Record<string, string>; ordering?: string[] }` (optional wallet customization)
 - `zkLoginGoogle?: ZkLoginGoogleConfig` (optional Enoki zkLogin config)
 - `passkey?: PasskeyConfig` (optional WebAuthn passkey wallet config)
+- `multisig?: MultisigConfig` (optional multisig configuration)
 
 #### ConnectButton
 
@@ -231,6 +234,26 @@ Configuration options:
 
 For detailed documentation including recovery flows, technical details, and troubleshooting, see [docs/PASSKEY_INTEGRATION.md](docs/PASSKEY_INTEGRATION.md).
 
+### Multisig Support
+
+Built-in support for **N-of-M** multisig transactions. Define static signers (DAO mode) or let users create their own multisig configurations (Dynamic mode). Supports mixing standard wallets, zkLogin, and Passkeys as signers.
+
+```svelte
+<script>
+	const multisigConfig = {
+		mode: 'dynamic', // or 'preconfigured'
+		network: 'testnet',
+		storageKey: 'my-multisig-config'
+	};
+</script>
+
+<SuiModule {multisigConfig}>
+	<!-- Your App -->
+</SuiModule>
+```
+
+See the full guide: [docs/MULTISIG_GUIDE.md](docs/MULTISIG_GUIDE.md).
+
 ### API Reference
 
 Exports from `sui-svelte-wallet-kit`:
@@ -245,6 +268,7 @@ Exports from `sui-svelte-wallet-kit`:
 - SuiClient: `useSuiClient()`
 - Discovery: `walletAdapters`, `availableWallets`
 - Enoki/zkLogin: `isZkLoginWallet()`, `getZkLoginInfo()`
+- Multisig: `useMultisig()`
 
 Examples:
 

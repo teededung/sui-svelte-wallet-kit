@@ -222,6 +222,8 @@ export interface UseMultisigReturn {
 	signers: ResolvedSigner[];
 	mode: 'preconfigured' | 'dynamic' | null;
 	threshold: number;
+	resolvedCount: number;
+	totalWeight: number;
 
 	// Actions (both modes)
 	createProposal: (tx: Transaction) => Promise<MultisigProposal>;
@@ -230,6 +232,7 @@ export interface UseMultisigReturn {
 	// Actions (dynamic mode only)
 	addSignerFromCurrentWallet: (options?: { weight?: number; name?: string }) => Promise<void>;
 	addSigner: (signer: MultisigSigner) => Promise<void>;
+	updateSignerWeight: (signerId: string, weight: number) => void;
 	removeSigner: (signerId: string) => void;
 	setThreshold: (threshold: number) => void;
 	saveConfig: () => void;

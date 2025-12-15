@@ -556,6 +556,13 @@
 				</div>
 			{/if}
 		</div>
+
+		<div class="actions-section">
+			<h2>MultiSig Actions</h2>
+			<div class="action-buttons">
+				<a class="action-btn" href="/multisig">MultiSig Demo</a>
+			</div>
+		</div>
 	</div>
 </SuiModule>
 

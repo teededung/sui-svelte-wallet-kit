@@ -1,13 +1,16 @@
 <script lang="ts">
-	import { multisigStore, useCurrentAccount, useCurrentWallet } from '$lib';
+	import { useMultisig, useCurrentAccount, useCurrentWallet } from '$lib';
 	import type { MultisigProposal } from '$lib/MultisigService/MultisigTypes.js';
 	import { Transaction } from '@mysten/sui/transactions';
 
 	const account = $derived(useCurrentAccount());
 	const currentWallet = $derived(useCurrentWallet());
-	const store = multisigStore;
+	const store = useMultisig();
 
-	let error = $state<string | null>(null);
+	let configError = $state<string | null>(null);
+	let buildError = $state<string | null>(null);
+	let signError = $state<string | null>(null);
+	let execError = $state<string | null>(null);
 	let busy = $state(false);
 
 	// Proposal state
@@ -26,7 +29,7 @@
 
 	// Build proposal
 	const buildProposal = async () => {
-		error = null;
+		buildError = null;
 		executeResult = null;
 		busy = true;
 		try {
@@ -38,7 +41,7 @@
 
 			proposal = await store.createProposal(tx);
 		} catch (e: any) {
-			error = e?.message || 'Failed to build proposal';
+			buildError = e?.message || 'Failed to build proposal';
 		} finally {
 			busy = false;
 		}
@@ -46,7 +49,7 @@
 
 	// Sign for a specific signer
 	const signForSigner = async (signerId: string) => {
-		error = null;
+		signError = null;
 		busy = true;
 		try {
 			if (!proposal) throw new Error('Build proposal first');
@@ -55,7 +58,7 @@
 			// Force reactivity update
 			signatureVersion++;
 		} catch (e: any) {
-			error = e?.message || 'Failed to sign';
+			signError = e?.message || 'Failed to sign';
 		} finally {
 			busy = false;
 		}
@@ -69,7 +72,8 @@
 
 	// Execute transaction
 	const executeTransaction = async () => {
-		error = null;
+		configError = null;
+		execError = null;
 		busy = true;
 		try {
 			if (!proposal) throw new Error('No proposal');
@@ -77,7 +81,7 @@
 
 			executeResult = await proposal.execute();
 		} catch (e: any) {
-			error = e?.message || 'Execution failed';
+			execError = e?.message || 'Execution failed';
 		} finally {
 			busy = false;
 		}
@@ -87,7 +91,9 @@
 	const resetProposal = () => {
 		proposal = null;
 		executeResult = null;
-		error = null;
+		buildError = null;
+		signError = null;
+		execError = null;
 		signatureVersion = 0;
 	};
 
@@ -143,12 +149,12 @@
 			class="btn primary"
 			onclick={async () => {
 				try {
-					error = null;
+					configError = null;
 					busy = true;
 					await store.addSignerFromCurrentWallet({ weight: 1 });
 					store.saveConfig();
 				} catch (e: any) {
-					error = e?.message || 'Failed to add signer';
+					configError = e?.message || 'Failed to add signer';
 				} finally {
 					busy = false;
 				}
@@ -162,12 +168,20 @@
 			onclick={() => {
 				store.clearConfig();
 				resetProposal();
+				configError = null;
 			}}
 			disabled={busy}
 		>
 			Clear saved demo data
 		</button>
 	</div>
+
+	{#if configError}
+		<div class="error">
+			<strong>Configuration Error:</strong>
+			{configError}
+		</div>
+	{/if}
 
 	<h3>Signers ({store.signers.length})</h3>
 	{#if store.signers.length === 0}
@@ -188,6 +202,7 @@
 							onclick={() => {
 								store.removeSigner(signer.id);
 								store.saveConfig();
+								configError = null;
 							}}>Remove</button
 						>
 					</div>
@@ -242,7 +257,7 @@
 </section>
 
 <!-- Section 3: Build Proposal -->
-<section class="card">
+<section class="card" class:disabled={!store.isReady}>
 	<h2>3. Build Proposal (tx bytes)</h2>
 	<div class="row" style="align-items: flex-end;">
 		<label class="field" style="flex: 1;">
@@ -259,6 +274,14 @@
 		</button>
 		<button class="btn" onclick={resetProposal} disabled={busy}>Reset</button>
 	</div>
+
+	{#if buildError}
+		<div class="error">
+			<strong>Error:</strong>
+			{buildError}
+		</div>
+	{/if}
+
 	{#if proposal}
 		<div class="mono" style="margin-top: 0.5rem;">
 			<strong>Proposal ID:</strong>
@@ -272,7 +295,7 @@
 </section>
 
 <!-- Section 4: Collect Signatures -->
-<section class="card">
+<section class="card" class:disabled={!proposal}>
 	<h2>4. Collect Signatures</h2>
 
 	<div class="current-wallet-info">
@@ -322,6 +345,13 @@
 		{/each}
 	</div>
 
+	{#if signError}
+		<div class="error">
+			<strong>Signing Error:</strong>
+			{signError}
+		</div>
+	{/if}
+
 	{#if proposal}
 		<div class="status-bar" style="margin-top: 0.75rem;">
 			<span>Signed Weight: <strong>{proposalSignedWeight}</strong> / {store.threshold}</span>
@@ -335,11 +365,18 @@
 </section>
 
 <!-- Section 5: Execute -->
-<section class="card">
+<section class="card" class:disabled={!proposal}>
 	<h2>5. Combine & Execute</h2>
 	<button class="btn primary" onclick={executeTransaction} disabled={busy || !proposalCanExecute}>
 		Combine & Execute
 	</button>
+
+	{#if execError}
+		<div class="error">
+			<strong>Execution Error:</strong>
+			{execError}
+		</div>
+	{/if}
 
 	{#if executeResult}
 		<div class="result">
@@ -348,14 +385,6 @@
 		</div>
 	{/if}
 </section>
-
-<!-- Error display -->
-{#if error}
-	<div class="error">
-		<strong>Error:</strong>
-		{error}
-	</div>
-{/if}
 
 <style>
 	.card {
@@ -366,6 +395,14 @@
 		margin: 1rem 0;
 		box-shadow: 0 12px 30px rgba(2, 6, 23, 0.55);
 		backdrop-filter: blur(6px);
+		transition:
+			opacity 0.3s ease,
+			filter 0.3s ease;
+	}
+	.card.disabled {
+		opacity: 0.5;
+		pointer-events: none;
+		filter: grayscale(0.5);
 	}
 	h2 {
 		color: #e2e8f0;

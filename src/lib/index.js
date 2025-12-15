@@ -81,9 +81,7 @@ export {
 	SignerResolver,
 	createSignerResolver,
 	parsePublicKey,
-	// Store (Svelte 5 Runes)
-	MultisigStore,
-	multisigStore,
+
 	// Hook
 	useMultisig,
 	initializeMultisig,

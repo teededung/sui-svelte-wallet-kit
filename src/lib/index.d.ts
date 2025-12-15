@@ -135,8 +135,6 @@ export {
 	SignerResolver,
 	createSignerResolver,
 	parsePublicKey,
-	MultisigStore,
-	multisigStore,
 	useMultisig,
 	initializeMultisig,
 	setMultisigContext,
