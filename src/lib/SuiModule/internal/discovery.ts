@@ -85,6 +85,8 @@ const applyWalletConfig = (
 	return result;
 };
 
+import { isSlushBrowser } from './core.js';
+
 export const getAvailableWallets = (
 	defaultWallets: readonly { name: string; iconUrl?: string; [key: string]: any }[],
 	detectedAdapters: SuiWalletAdapter[],
@@ -125,7 +127,19 @@ export const getAvailableWallets = (
 		installed: true
 	}));
 
-	return applyWalletConfig([...list, ...extraWalletEntries], config);
+	const result = applyWalletConfig([...list, ...extraWalletEntries], config);
+
+	// Special handling for Slush In-App Browser:
+	// If we detect we are running inside Slush, only show Slush wallet.
+	if (isSlushBrowser()) {
+		return result.filter((w) => {
+			const name = (w.name || '').toLowerCase();
+			const adapterName = (w.adapter?.name || '').toLowerCase();
+			return name.includes('slush') || adapterName.includes('slush');
+		});
+	}
+
+	return result;
 };
 
 // Snapshot + subscription
@@ -227,4 +241,3 @@ export const incrementDiscoveryAttempt = (): number => {
 	_discoveryAttempt += 1;
 	return _discoveryAttempt;
 };
-

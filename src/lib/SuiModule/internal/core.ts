@@ -14,6 +14,20 @@ export const getConnectionData = (): ConnectionData | null => {
 	return data ? (JSON.parse(data) as ConnectionData) : null;
 };
 
+// Browser detection for Slush Wallet (in-app browser)
+export const isSlushBrowser = (): boolean => {
+	if (!isBrowser) return false;
+	// Check User Agent for "Slush"
+	try {
+		if (/Slush/i.test(window.navigator.userAgent)) return true;
+	} catch {}
+	// Check for injected global object (common pattern)
+	try {
+		if ((window as any).slush || (window as any).Slush) return true;
+	} catch {}
+	return false;
+};
+
 export const updateConnectionData = (partial: Partial<ConnectionData>): void => {
 	if (!hasLocalStorage()) return;
 	const current = getConnectionData() || {};
@@ -179,4 +193,3 @@ export const getSuiClient = (chainIdLike: string, options: GetSuiClientOptions =
 	}
 	return _clientCache[network];
 };
-

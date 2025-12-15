@@ -34,7 +34,8 @@
 		getConfiguredNetwork,
 		getDefaultChain,
 		getSuiClient,
-		isBrowser
+		isBrowser,
+		isSlushBrowser
 	} from './internal/core.js';
 	import {
 		setModuleWalletDiscovery as _setModuleWalletDiscovery,
@@ -567,6 +568,8 @@
 	export const getZkLoginInfo = async (): Promise<{ session: any; metadata: any } | null> => {
 		return await integrationsModule.getZkLoginInfo(walletAdapter);
 	};
+
+	export { isSlushBrowser };
 
 	export const walletAdapters: SuiWalletAdapter[] = [];
 	export const availableWallets: WalletWithStatus[] = [];
