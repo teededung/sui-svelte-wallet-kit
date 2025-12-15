@@ -85,7 +85,7 @@ const applyWalletConfig = (
 	return result;
 };
 
-import { isSlushBrowser } from './core.js';
+import { isSlushBrowser, isMobile } from './core.js';
 
 export const getAvailableWallets = (
 	defaultWallets: readonly { name: string; iconUrl?: string; [key: string]: any }[],
@@ -130,8 +130,15 @@ export const getAvailableWallets = (
 	const result = applyWalletConfig([...list, ...extraWalletEntries], config);
 
 	// Special handling for Slush In-App Browser:
-	// If we detect we are running inside Slush, only show Slush wallet.
-	if (isSlushBrowser()) {
+	// Logic: If on Mobile AND Slush adapter is present, we are likely in Slush App.
+	// Normal Mobile Browser (Safari/Chrome) does not allow extension injection.
+	const slushInjected = result.some(
+		(w) =>
+			w.installed &&
+			(w.name.toLowerCase().includes('slush') || w.adapter?.name.toLowerCase().includes('slush'))
+	);
+
+	if (isSlushBrowser() || (isMobile() && slushInjected)) {
 		return result.filter((w) => {
 			const name = (w.name || '').toLowerCase();
 			const adapterName = (w.adapter?.name || '').toLowerCase();

@@ -14,6 +14,13 @@ export const getConnectionData = (): ConnectionData | null => {
 	return data ? (JSON.parse(data) as ConnectionData) : null;
 };
 
+export const isMobile = (): boolean => {
+	if (!isBrowser) return false;
+	return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+		window.navigator.userAgent
+	);
+};
+
 // Browser detection for Slush Wallet (in-app browser)
 export const isSlushBrowser = (): boolean => {
 	if (!isBrowser) return false;
